@@ -2,7 +2,7 @@
 
 Date: 2026-10-08
 
-Status: Conversational design approved; written spec awaiting review.
+Status: Written design approved on 2026-10-08.
 
 ## Intent and agreed scope
 
