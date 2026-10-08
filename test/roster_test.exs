@@ -4,49 +4,49 @@ defmodule RuleMatch.RosterTest do
 
   test "effective date is inclusive and termination date is exclusive" do
     book =
-      Roster.put(Roster.new(), :network, "provider", "basic",
+      Roster.put(Roster.new(), :access, "member", "read",
         effective_on: ~D[2025-12-31],
         terminates_on: ~D[2026-01-02],
-        meta: %{source: "contract"}
+        meta: %{source: "import"}
       )
 
-    refute Roster.member?(book, "network", "provider", "basic", ~D[2025-12-30])
+    refute Roster.member?(book, "access", "member", "read", ~D[2025-12-30])
 
     for date <- [~D[2025-12-31], ~D[2026-01-01]] do
-      assert {:ok, %{meta: %{source: "contract"}}} =
-               Roster.member(book, :network, "provider", "basic", date)
+      assert {:ok, %{meta: %{source: "import"}}} =
+               Roster.member(book, :access, "member", "read", date)
     end
 
-    refute Roster.member?(book, :network, "provider", "basic", ~D[2026-01-02])
-    refute Roster.member?(book, :network, "provider", "basic", nil)
+    refute Roster.member?(book, :access, "member", "read", ~D[2026-01-02])
+    refute Roster.member?(book, :access, "member", "read", nil)
   end
 
   test "unbounded cells accept nil dates but either bound requires a date" do
     for opts <- [[], [effective_on: ~D[2026-01-01]], [terminates_on: ~D[2026-01-01]]] do
-      book = Roster.put(Roster.new(), :network, "provider", "basic", opts)
-      assert Roster.member?(book, :network, "provider", "basic", nil) == (opts == [])
+      book = Roster.put(Roster.new(), :access, "member", "read", opts)
+      assert Roster.member?(book, :access, "member", "read", nil) == (opts == [])
     end
   end
 
-  test "wildcard cells cover concrete products and normalize provider and product identifiers" do
-    book = Roster.put(Roster.new(), :network, :Provider, :any)
-    assert Roster.member?(book, "network", " PROVIDER ", " BASIC ", nil)
-    assert Roster.member?(book, :network, :provider, :any, nil)
-    refute Roster.member?(book, :missing, :provider, :basic, nil)
-    refute Roster.member?(book, :network, :other, :basic, nil)
-    exact = Roster.put(Roster.new(), :network, " PROVIDER ", " BASIC ")
-    assert Roster.member?(exact, :network, :provider, :basic, nil)
-    refute Roster.member?(exact, :network, :provider, :any, nil)
+  test "wildcard cells cover concrete categories and normalize member and category identifiers" do
+    book = Roster.put(Roster.new(), :access, :Member, :any)
+    assert Roster.member?(book, "access", " MEMBER ", " READ ", nil)
+    assert Roster.member?(book, :access, :member, :any, nil)
+    refute Roster.member?(book, :missing, :member, :read, nil)
+    refute Roster.member?(book, :access, :other, :read, nil)
+    exact = Roster.put(Roster.new(), :access, " MEMBER ", " READ ")
+    assert Roster.member?(exact, :access, :member, :read, nil)
+    refute Roster.member?(exact, :access, :member, :any, nil)
   end
 
-  test "a specific product cell takes precedence over a wildcard even when expired" do
+  test "a specific category cell takes precedence over a wildcard even when expired" do
     book =
       Roster.new()
-      |> Roster.put(:network, "provider", :any)
-      |> Roster.put(:network, "provider", "basic", terminates_on: ~D[2026-01-01])
+      |> Roster.put(:access, "member", :any)
+      |> Roster.put(:access, "member", "read", terminates_on: ~D[2026-01-01])
 
-    refute Roster.member?(book, :network, "provider", "basic", ~D[2026-01-01])
-    assert Roster.member?(book, :network, "provider", "plus", ~D[2026-01-01])
+    refute Roster.member?(book, :access, "member", "read", ~D[2026-01-01])
+    assert Roster.member?(book, :access, "member", "write", ~D[2026-01-01])
   end
 
   test "put replaces only the addressed cell and preserves other rosters" do

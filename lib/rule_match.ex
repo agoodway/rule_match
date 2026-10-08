@@ -12,8 +12,8 @@ defmodule RuleMatch do
     * `select/3` — given a set of candidates, which of them match the rules.
 
   Ranking is `{priority, specificity}` descending. Specificity is the number
-  of leaf constraints, so a provider-and-product-and-date rule beats a
-  payer-only rule at the same priority.
+  of leaf constraints, so a rule checking organization, tier, and region
+  beats one checking only organization at the same priority.
 
   Rules are data. A `RuleMatch.Ruleset` is loaded from a JSON file and
   carries the rules, the rosters they reference, and the candidate
@@ -22,7 +22,7 @@ defmodule RuleMatch do
   each candidate first.
 
       ruleset = RuleMatch.Ruleset.load!("rules.json")
-      RuleMatch.decide(ruleset, %{payer: "acme", date_of_service: "2026-07-03"})
+      RuleMatch.decide(ruleset, %{organization: "acme", as_of: "2026-07-03"})
 
   The engine has no domain knowledge and ships no rules.
   """

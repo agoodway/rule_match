@@ -7,24 +7,24 @@ defmodule RuleMatch.Ruleset do
 
       {
         "format": 1,
-        "name": "coverage",
+        "name": "access",
         "version": "2026-01-01",
         "description": "...",
         "normalize": {
-          "downcase": ["payer", "plan_type"],
-          "dates": ["date_of_service"]
+          "downcase": ["organization", "tier"],
+          "dates": ["as_of"]
         },
         "rules": [
           {
-            "id": "acme_ppo",
+            "id": "acme_standard",
             "priority": 10,
-            "conditions": [{"op": "eq", "field": "payer", "value": "acme"}],
-            "outcome": {"network_status": "in_network"}
+            "conditions": [{"op": "eq", "field": "organization", "value": "acme"}],
+            "outcome": {"access_status": "allowed"}
           }
         ],
         "rosters": {
-          "network_a": [
-            {"provider": "provider_a", "products": ["basic"], "effective_on": "2024-08-15", "terminates_on": null}
+          "access_a": [
+            {"member": "member_a", "categories": ["read"], "effective_on": "2024-08-15", "terminates_on": null}
           ]
         }
       }

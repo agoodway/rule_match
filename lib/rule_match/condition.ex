@@ -14,9 +14,10 @@ defmodule RuleMatch.Condition do
     * `{:all, [condition]}` / `{:any, [condition]}` / `{:none, [condition]}` / `{:not, condition}`
     * `{:pred, name, args}` — `name` (atom or string) is looked up in the context predicate registry.
       The function is called as `fun.(candidate, args)` and must return a boolean.
-    * `{:roster, roster_name, opts}` — product-and-date membership. See `RuleMatch.Roster`.
-      `opts` takes `:provider` and `:as_of` field names, and `:product`, which is a
-      field name, `:any`, or `{:literal, product}`.
+    * `{:roster, roster_name, opts}` — category-and-date membership. See `RuleMatch.Roster`.
+      `opts` takes `:member` and `:as_of` field names, and `:category`, which is a
+      field name, `:any`, or `{:literal, category}`.
+      Defaults read `:member_id`, `:as_of`, and `:category` from the candidate.
 
   Field names may be atoms or strings. Rules decoded from JSON use strings.
   See `RuleMatch.Codec` for the JSON form of every operator.
@@ -215,20 +216,20 @@ defmodule RuleMatch.Condition do
 
   defp evaluate({:roster, name, opts}, candidate, context) do
     rosters = Map.get(context, :rosters, %{})
-    provider_field = Keyword.get(opts, :provider, :provider_id)
-    product_spec = Keyword.get(opts, :product, :product)
-    as_of_field = Keyword.get(opts, :as_of, :date_of_service)
+    member_field = Keyword.get(opts, :member, :member_id)
+    category_spec = Keyword.get(opts, :category, :category)
+    as_of_field = Keyword.get(opts, :as_of, :as_of)
 
-    with {:ok, provider} <- fetch_required(candidate, provider_field),
+    with {:ok, member} <- fetch_required(candidate, member_field),
          {:ok, as_of} <- fetch_required(candidate, as_of_field) do
-      product = resolve_product(product_spec, candidate)
+      category = resolve_category(category_spec, candidate)
 
-      case Roster.member(rosters, name, provider, product, coerce_comparable(as_of)) do
+      case Roster.member(rosters, name, member, category, coerce_comparable(as_of)) do
         {:ok, cell} ->
-          {:ok, true, %{roster: name, provider: provider, product: product, cell: cell}}
+          {:ok, true, %{roster: name, member: member, category: category, cell: cell}}
 
         :not_member ->
-          {:ok, false, %{roster: name, provider: provider, product: product, cell: nil}}
+          {:ok, false, %{roster: name, member: member, category: category, cell: nil}}
       end
     else
       :missing ->
@@ -251,11 +252,11 @@ defmodule RuleMatch.Condition do
     end
   end
 
-  # `:any` and `{:literal, value}` are products, not candidate fields.
-  defp resolve_product(:any, _candidate), do: :any
-  defp resolve_product({:literal, value}, _candidate), do: value
+  # `:any` and `{:literal, value}` are categories, not candidate fields.
+  defp resolve_category(:any, _candidate), do: :any
+  defp resolve_category({:literal, value}, _candidate), do: value
 
-  defp resolve_product(field, candidate) when is_atom(field) or is_binary(field) do
+  defp resolve_category(field, candidate) when is_atom(field) or is_binary(field) do
     case fetch(candidate, field) do
       {:ok, value} -> value
       :missing -> nil

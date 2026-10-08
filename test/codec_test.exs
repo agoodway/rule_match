@@ -123,36 +123,67 @@ defmodule RuleMatch.CodecTest do
         do: assert_raise(ArgumentError, fn -> String.to_existing_atom(string) end)
   end
 
-  test "rosters support singular product and grouped cells with metadata" do
+  test "roster conditions encode and decode generic field mappings and category selectors" do
+    for {properties, opts} <- [
+          {%{}, [member: "member_id", category: "category", as_of: "as_of"]},
+          {%{
+             "member_field" => "asset_id",
+             "category_field" => "permission",
+             "as_of_field" => "checked_on"
+           }, [member: "asset_id", category: "permission", as_of: "checked_on"]},
+          {%{"category" => "read"},
+           [member: "member_id", category: {:literal, "read"}, as_of: "as_of"]},
+          {%{"category" => "*"}, [member: "member_id", category: :any, as_of: "as_of"]}
+        ] do
+      map = Map.merge(%{"op" => "roster", "roster" => "access"}, properties)
+      condition = {:roster, "access", opts}
+
+      assert Codec.condition_from_map(map) == condition
+      assert Codec.condition_to_map(condition) == map
+    end
+  end
+
+  test "rosters support singular categories grouped cells and wildcards with metadata" do
     map = %{
-      "network" => [
+      "access" => [
         %{
-          "provider" => "p",
-          "product" => "basic",
+          "member" => "p",
+          "category" => "read",
           "effective_on" => "2026-01-01",
           "terminates_on" => "2027-01-01",
-          "meta" => %{"source" => "contract"}
-        }
+          "meta" => %{"source" => "import"}
+        },
+        %{"member" => "asset_b", "categories" => ["read", "write"]},
+        %{"member" => "asset_c", "categories" => ["*"]}
       ]
     }
 
     book = Codec.rosters_from_map(map)
 
-    assert {:ok, %{meta: %{"source" => "contract"}}} =
-             Roster.member(book, :network, "p", "basic", ~D[2026-01-01])
+    assert {:ok, %{meta: %{"source" => "import"}}} =
+             Roster.member(book, :access, "p", "read", ~D[2026-01-01])
 
-    assert [%{"products" => ["basic"], "terminates_on" => "2027-01-01"}] =
-             Codec.rosters_to_map(book)["network"]
+    assert Roster.member?(book, :access, "asset_b", "write", ~D[2026-01-01])
+    assert Roster.member?(book, :access, "asset_c", "admin", ~D[2026-01-01])
+
+    assert [
+             %{"member" => "asset_b", "categories" => ["read", "write"]},
+             %{"member" => "asset_c", "categories" => ["*"]},
+             %{"member" => "p", "categories" => ["read"], "terminates_on" => "2027-01-01"}
+           ] =
+             Codec.rosters_to_map(book)["access"]
   end
 
   for {label, value} <- [
         {"non-object", []},
         {"non-list entries", %{"a" => %{}}},
         {"non-object entry", %{"a" => [1]}},
-        {"missing product", %{"a" => [%{"provider" => "p"}]}},
-        {"invalid products", %{"a" => [%{"provider" => "p", "products" => "basic"}]}},
+        {"missing member", %{"a" => [%{"categories" => ["read"]}]}},
+        {"invalid member", %{"a" => [%{"member" => 1, "categories" => ["read"]}]}},
+        {"missing category", %{"a" => [%{"member" => "p"}]}},
+        {"invalid categories", %{"a" => [%{"member" => "p", "categories" => "read"}]}},
         {"invalid date type",
-         %{"a" => [%{"provider" => "p", "product" => "basic", "effective_on" => 1}]}}
+         %{"a" => [%{"member" => "p", "category" => "read", "effective_on" => 1}]}}
       ] do
     test "rejects malformed roster #{label}" do
       assert_raise ArgumentError, fn -> Codec.rosters_from_map(unquote(Macro.escape(value))) end

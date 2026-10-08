@@ -190,28 +190,46 @@ defmodule RuleMatch.ConditionTest do
     end
   end
 
-  test "roster conditions support field mappings literal products and wildcards" do
-    book = Roster.put(Roster.new(), :network, "provider", :any, effective_on: ~D[2026-01-01])
+  test "roster conditions support field mappings literal categories and wildcards" do
+    book = Roster.put(Roster.new(), :access, "member", :any, effective_on: ~D[2026-01-01])
     context = %{rosters: book}
-    candidate = %{npi: "PROVIDER", visit: "2026-01-01", plan: "basic"}
+    candidate = %{asset_id: "MEMBER", checked_on: "2026-01-01", permission: "read"}
 
-    for product <- [:any, {:literal, "basic"}, :plan] do
-      condition = {:roster, :network, [provider: :npi, as_of: :visit, product: product]}
+    for {spec, category} <- [{:any, :any}, {{:literal, "read"}, "read"}, {:permission, "read"}] do
+      condition = {:roster, :access, [member: :asset_id, as_of: :checked_on, category: spec]}
 
-      assert %{passed: true, cell: %{effective_on: ~D[2026-01-01]}} =
+      assert %{
+               passed: true,
+               member: "MEMBER",
+               category: ^category,
+               cell: %{effective_on: ~D[2026-01-01]}
+             } =
                Condition.explain(condition, candidate, context)
 
-      refute Condition.match?(condition, %{candidate | visit: "2025-12-31"}, context)
-      refute Condition.match?(condition, Map.delete(candidate, :npi), context)
-      refute Condition.match?(condition, Map.delete(candidate, :visit), context)
+      refute Condition.match?(condition, %{candidate | checked_on: "2025-12-31"}, context)
+      refute Condition.match?(condition, Map.delete(candidate, :asset_id), context)
+      refute Condition.match?(condition, Map.delete(candidate, :checked_on), context)
     end
 
-    exact = %{rosters: Roster.put(Roster.new(), :network, "provider", "basic")}
+    exact = %{rosters: Roster.put(Roster.new(), :access, "member", "read")}
 
     refute Condition.match?(
-             {:roster, :network, []},
-             %{provider_id: "provider", date_of_service: ~D[2026-01-01]},
+             {:roster, :access, []},
+             %{member_id: "member", as_of: ~D[2026-01-01]},
              exact
            )
+  end
+
+  test "roster conditions read generic default fields for an asset" do
+    context = %{rosters: Roster.put(Roster.new(), :access, "asset_a", "read")}
+    condition = {:roster, :access, []}
+    candidate = %{member_id: "asset_a", category: "read", as_of: "2026-01-01"}
+
+    assert %{passed: true, member: "asset_a", category: "read"} =
+             Condition.explain(condition, candidate, context)
+
+    refute Condition.match?(condition, %{candidate | category: "write"}, context)
+    refute Condition.match?(condition, Map.delete(candidate, :member_id), context)
+    refute Condition.match?(condition, Map.delete(candidate, :as_of), context)
   end
 end

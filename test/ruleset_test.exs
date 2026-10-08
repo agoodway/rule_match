@@ -4,25 +4,25 @@ defmodule RuleMatch.RulesetTest do
   alias RuleMatch.{Codec, Roster, Ruleset}
 
   @every_op [
-    {:eq, :payer, "acme"},
-    {:neq, "pcp_network", "network_d"},
-    {:in, :plan_type, ["hmo", "pos"]},
-    {:not_in, :product_line, ["exchange"]},
-    {:contains, :card_note, "example text"},
-    {:matches, :member_id, ~r/^w\d+$/},
-    {:present, :provider_id},
+    {:eq, :organization, "acme"},
+    {:neq, "team", "access_d"},
+    {:in, :tier, ["starter", "standard"]},
+    {:not_in, :segment, ["restricted"]},
+    {:contains, :note, "example text"},
+    {:matches, :reference, ~r/^w\d+$/},
+    {:present, :member_id},
     {:blank, :package_id},
     {:gt, :age, 17},
-    {:gte, :date_of_service, ~D[2000-02-01]},
+    {:gte, :as_of, ~D[2000-02-01]},
     {:lt, :age, 65},
-    {:lte, :date_of_service, "2000-02-29"},
-    {:between, :date_of_service, ~D[2000-01-01], nil},
+    {:lte, :as_of, "2000-02-29"},
+    {:between, :as_of, ~D[2000-01-01], nil},
     {:all, [{:eq, :a, 1}, {:any, [{:eq, :b, true}, {:none, [{:eq, :c, nil}]}]}]},
     {:not, {:eq, :has_privileges, false}},
     {:pred, :custom, [1, "two"]},
-    {:roster, :network_a, [product: :product]},
-    {:roster, "network_b", [product: :any]},
-    {:roster, "network_c", [provider: :npi, product: {:literal, "basic"}, as_of: :visit_date]}
+    {:roster, :access_a, [category: :category]},
+    {:roster, "access_b", [category: :any]},
+    {:roster, "access_c", [member: :asset_id, category: {:literal, "read"}, as_of: :checked_on]}
   ]
 
   test "every condition op survives a json round trip" do
@@ -35,15 +35,15 @@ defmodule RuleMatch.RulesetTest do
 
   test "decoded conditions evaluate like the originals" do
     candidate = %{
-      payer: "Acme",
-      pcp_network: "network_b",
-      plan_type: "HMO",
-      product_line: "commercial",
-      card_note: "contains EXAMPLE TEXT here",
-      member_id: "W123",
-      provider_id: "provider_a",
+      organization: "Acme",
+      team: "access_b",
+      tier: "STARTER",
+      segment: "general",
+      note: "contains EXAMPLE TEXT here",
+      reference: "W123",
+      member_id: "member_a",
       age: 40,
-      date_of_service: ~D[2000-02-10],
+      as_of: ~D[2000-02-10],
       a: 1,
       b: true,
       c: "x",
@@ -62,12 +62,12 @@ defmodule RuleMatch.RulesetTest do
   test "a ruleset round-trips through a file" do
     book =
       Roster.new()
-      |> Roster.put(:network_a, "provider_a", "basic", effective_on: ~D[1998-01-01])
-      |> Roster.put(:network_a, "provider_a", "plus",
+      |> Roster.put(:access_a, "member_a", "read", effective_on: ~D[1998-01-01])
+      |> Roster.put(:access_a, "member_a", "write",
         effective_on: ~D[1998-01-01],
         terminates_on: ~D[1999-01-01]
       )
-      |> Roster.put(:network_b, "provider_b", :any,
+      |> Roster.put(:access_b, "member_b", :any,
         effective_on: ~D[1996-01-01],
         meta: %{"source" => "example_fixture"}
       )
@@ -76,17 +76,17 @@ defmodule RuleMatch.RulesetTest do
       Ruleset.new(
         name: "test",
         version: "1",
-        normalize: %{downcase: [:payer], dates: [:date_of_service]},
+        normalize: %{downcase: [:organization], dates: [:as_of]},
         rules: [
-          RuleMatch.rule("network_a",
+          RuleMatch.rule("access_a",
             priority: 50,
             tags: [:roster],
-            conditions: [{:roster, :network_a, []}],
-            outcome: %{network_status: :in_network}
+            conditions: [{:roster, :access_a, []}],
+            outcome: %{access_status: :allowed}
           ),
           RuleMatch.rule("acme",
-            conditions: [{:eq, :payer, "acme"}],
-            outcome: %{packages: ["1"], file_claim: false}
+            conditions: [{:eq, :organization, "acme"}],
+            outcome: %{packages: ["1"], notify: false}
           )
         ],
         rosters: book
@@ -100,20 +100,20 @@ defmodule RuleMatch.RulesetTest do
 
     assert Ruleset.to_json(loaded) == Ruleset.to_json(ruleset)
     assert loaded.rosters == book
-    assert [%{id: "network_a", priority: 50, tags: ["roster"]}, %{id: "acme"}] = loaded.rules
+    assert [%{id: "access_a", priority: 50, tags: ["roster"]}, %{id: "acme"}] = loaded.rules
     assert hd(loaded.rules).meta.specificity == 1
 
     candidate = %{
-      "payer" => "NETWORK_A",
-      provider_id: "provider_a",
-      product: "basic",
-      date_of_service: "2000-01-01"
+      "organization" => "ACCESS_A",
+      member_id: "member_a",
+      category: "read",
+      as_of: "2000-01-01"
     }
 
-    assert {:ok, %{rule_id: "network_a", network_status: "in_network"}} =
+    assert {:ok, %{rule_id: "access_a", access_status: "allowed"}} =
              RuleMatch.decide(loaded, candidate)
 
-    assert RuleMatch.decide(loaded, %{candidate | product: "plus"}) == :nomatch
+    assert RuleMatch.decide(loaded, %{candidate | category: "write"}) == :nomatch
   end
 
   test "named predicates resolve by string name" do
@@ -153,7 +153,7 @@ defmodule RuleMatch.RulesetTest do
 
     assert {:error, {:invalid_ruleset, message}} =
              Ruleset.from_json(
-               ~s({"rosters": {"m": [{"provider": "p", "product": "x", "effective_on": "soon"}]}})
+               ~s({"rosters": {"m": [{"member": "p", "category": "x", "effective_on": "soon"}]}})
              )
 
     assert message =~ "ISO 8601"

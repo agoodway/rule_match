@@ -1,18 +1,21 @@
 defmodule RuleMatch.Roster do
   @moduledoc """
-  Provider participation that depends on product and date.
+  Named membership tables that depend on category and date.
 
-  A roster is often a matrix: a provider row, a product column, and an
-  effective date in the cell. A flat provider list cannot express that. This module stores cells as:
+  A member can be any identified entity, such as a person, organization,
+  device, or location. Categories can represent roles, permissions, or
+  groups. Each roster stores cells as:
 
-      {provider_id, product} => %{effective_on: date, terminates_on: date | nil}
+      {member_id, category} => %{effective_on: date, terminates_on: date | nil}
 
-  `product` may be the atom `:any` when the agreement is not product-specific.
-  A lookup for a concrete product also matches an `:any` cell.
+  `category` may be the atom `:any` for membership across every category.
+  A lookup uses a specific category cell first, then an `:any` cell if no
+  specific cell exists. An expired specific cell still takes precedence.
 
-  Plan-level termination (a whole plan leaving on a given date) belongs on
-  the rule, not in the cell. A cell can still carry its own
-  `terminates_on` when a single provider left early.
+  `effective_on` is inclusive and `terminates_on` is exclusive. Either
+  bound may be nil. A cell's termination applies to one member/category
+  pair; broader restrictions, such as shutting down a category, can be
+  expressed as higher-priority rules.
   """
 
   @type cell :: %{effective_on: Date.t() | nil, terminates_on: Date.t() | nil, meta: map()}
@@ -23,48 +26,49 @@ defmodule RuleMatch.Roster do
   def new, do: %{}
 
   @doc """
-  Insert a participation cell.
+  Insert or replace a membership cell.
 
-  `provider_id` and `product` are normalized (strings downcased and trimmed).
-  Pass `product: :any` for an agreement that covers every product. Roster
-  names are stored as strings; an atom name is converted.
+  `member_id` and `category` are normalized (strings downcased and trimmed).
+  Pass `:any` as the category argument for membership across every category.
+  Roster names are stored as strings; an atom name is converted. Each
+  member/category pair holds one cell, so another put replaces that cell.
   """
   @spec put(t(), atom() | String.t(), term(), term(), keyword()) :: t()
-  def put(book, roster, provider_id, product, opts \\ []) do
+  def put(book, roster, member_id, category, opts \\ []) do
     cell = %{
       effective_on: Keyword.get(opts, :effective_on),
       terminates_on: Keyword.get(opts, :terminates_on),
       meta: Keyword.get(opts, :meta, %{})
     }
 
-    key = {normalize(provider_id), normalize(product)}
+    key = {normalize(member_id), normalize(category)}
     Map.update(book, normalize_name(roster), %{key => cell}, &Map.put(&1, key, cell))
   end
 
   @doc """
-  `{:ok, cell}` when the provider is participating for the product on `as_of`.
+  `{:ok, cell}` when membership is active for the category on `as_of`.
 
   An open `effective_on` or `terminates_on` does not constrain that side.
   `as_of` must be a `Date` (or nil, which only matches cells with no bounds).
   """
   @spec member(t(), atom() | String.t(), term(), term(), Date.t() | nil) ::
           {:ok, cell()} | :not_member
-  def member(book, roster, provider_id, product, as_of) do
+  def member(book, roster, member_id, category, as_of) do
     table = Map.get(book, normalize_name(roster), %{})
-    provider = normalize(provider_id)
-    product = normalize(product)
+    member = normalize(member_id)
+    category = normalize(category)
 
     cell =
-      Map.get(table, {provider, product}) ||
-        Map.get(table, {provider, :any})
+      Map.get(table, {member, category}) ||
+        Map.get(table, {member, :any})
 
     if cell && covers?(cell, as_of), do: {:ok, cell}, else: :not_member
   end
 
   @doc "Boolean form of `member/5`."
   @spec member?(t(), atom() | String.t(), term(), term(), Date.t() | nil) :: boolean()
-  def member?(book, roster, provider_id, product, as_of) do
-    match?({:ok, _}, member(book, roster, provider_id, product, as_of))
+  def member?(book, roster, member_id, category, as_of) do
+    match?({:ok, _}, member(book, roster, member_id, category, as_of))
   end
 
   defp covers?(%{effective_on: from, terminates_on: to}, as_of) do

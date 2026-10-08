@@ -5,42 +5,42 @@ defmodule RuleMatch.Codec do
 
   Conditions are tagged objects keyed by `"op"`:
 
-      {"op": "eq", "field": "payer", "value": "acme"}
-      {"op": "in", "field": "plan_type", "values": ["hmo", "pos"]}
-      {"op": "not_in", "field": "product_line", "values": ["exchange"]}
-      {"op": "neq", "field": "pcp_network", "value": "network_b"}
-      {"op": "contains", "field": "card_note", "value": "example text"}
+      {"op": "eq", "field": "organization", "value": "acme"}
+      {"op": "in", "field": "tier", "values": ["starter", "standard"]}
+      {"op": "not_in", "field": "segment", "values": ["restricted"]}
+      {"op": "neq", "field": "team", "value": "access_b"}
+      {"op": "contains", "field": "note", "value": "example text"}
       {"op": "matches", "field": "member_id", "pattern": "^w\\d+$"}
       {"op": "matches", "field": "member_id", "pattern": "^W\\d+$", "flags": ""}
-      {"op": "present", "field": "provider_id"}
-      {"op": "blank", "field": "provider_id"}
-      {"op": "gte", "field": "date_of_service", "value": "2000-02-01"}
-      {"op": "between", "field": "date_of_service", "from": "2000-01-01", "to": null}
+      {"op": "present", "field": "member_id"}
+      {"op": "blank", "field": "member_id"}
+      {"op": "gte", "field": "as_of", "value": "2000-02-01"}
+      {"op": "between", "field": "as_of", "from": "2000-01-01", "to": null}
       {"op": "all", "conditions": [...]}
       {"op": "any", "conditions": [...]}
       {"op": "none", "conditions": [...]}
       {"op": "not", "condition": {...}}
       {"op": "pred", "name": "my_predicate", "args": [...]}
-      {"op": "roster", "roster": "network_a", "product_field": "product"}
-      {"op": "roster", "roster": "network_b", "product": "*"}
+      {"op": "roster", "roster": "access_a", "category_field": "category"}
+      {"op": "roster", "roster": "access_b", "category": "*"}
 
   `gt`, `lt` and `lte` take the same shape as `gte`. A `matches` pattern
   without `"flags"` follows the engine's case setting (case-insensitive by
   default); with `"flags"` (letters from `imsux`, `""` for none) it is
   compiled exactly as given. A roster condition reads
-  the provider from `"provider_field"` (default `"provider_id"`) and the date
-  from `"as_of_field"` (default `"date_of_service"`). Its product is either a
-  candidate field (`"product_field"`, default `"product"`), a literal
-  (`"product": "basic"`), or any product (`"product": "*"`).
+  the member from `"member_field"` (default `"member_id"`) and the date
+  from `"as_of_field"` (default `"as_of"`). Its category is either a
+  candidate field (`"category_field"`, default `"category"`), a literal
+  (`"category": "read"`), or any category (`"category": "*"`).
 
   Dates are ISO 8601 strings. Decoding never creates atoms from field names,
   ops, or values. Outcome keys are the exception: they become atoms so that
-  `result.network_status` works. Load only ruleset files you trust.
+  `result.access_status` works. Load only ruleset files you trust.
   """
 
   alias RuleMatch.{Roster, Rule}
 
-  @any_product "*"
+  @any_category "*"
 
   # `:ucp` comes along with `u`, so it has no letter of its own.
   @regex_flag_letters %{caseless: "i", unicode: "u", multiline: "m", dotall: "s", extended: "x"}
@@ -147,22 +147,22 @@ defmodule RuleMatch.Codec do
     base = %{"op" => "roster", "roster" => to_string(name)}
 
     base =
-      case Keyword.get(opts, :product, :product) do
-        :any -> Map.put(base, "product", @any_product)
-        {:literal, value} -> Map.put(base, "product", to_json_value(value))
-        field -> put_unless(base, "product_field", to_string(field), "product")
+      case Keyword.get(opts, :category, :category) do
+        :any -> Map.put(base, "category", @any_category)
+        {:literal, value} -> Map.put(base, "category", to_json_value(value))
+        field -> put_unless(base, "category_field", to_string(field), "category")
       end
 
     base
     |> put_unless(
-      "provider_field",
-      to_string(Keyword.get(opts, :provider, :provider_id)),
-      "provider_id"
+      "member_field",
+      to_string(Keyword.get(opts, :member, :member_id)),
+      "member_id"
     )
     |> put_unless(
       "as_of_field",
-      to_string(Keyword.get(opts, :as_of, :date_of_service)),
-      "date_of_service"
+      to_string(Keyword.get(opts, :as_of, :as_of)),
+      "as_of"
     )
   end
 
@@ -211,17 +211,17 @@ defmodule RuleMatch.Codec do
   end
 
   def condition_from_map(%{"op" => "roster"} = map) do
-    product =
-      case Map.fetch(map, "product") do
-        {:ok, @any_product} -> :any
+    category =
+      case Map.fetch(map, "category") do
+        {:ok, @any_category} -> :any
         {:ok, value} -> {:literal, value}
-        :error -> string!(Map.get(map, "product_field", "product"), "product_field")
+        :error -> string!(Map.get(map, "category_field", "category"), "category_field")
       end
 
     opts = [
-      provider: string!(Map.get(map, "provider_field", "provider_id"), "provider_field"),
-      product: product,
-      as_of: string!(Map.get(map, "as_of_field", "date_of_service"), "as_of_field")
+      member: string!(Map.get(map, "member_field", "member_id"), "member_field"),
+      category: category,
+      as_of: string!(Map.get(map, "as_of_field", "as_of"), "as_of_field")
     ]
 
     {:roster, string!(required!(map, "roster"), "roster"), opts}
@@ -238,8 +238,8 @@ defmodule RuleMatch.Codec do
   @doc """
   A roster book as a JSON-ready map: roster name to a list of entries.
 
-  Cells for one provider that share dates and meta are grouped into one
-  entry with a `"products"` list.
+  Cells for one member that share dates and meta are grouped into one
+  entry with a `"categories"` list.
   """
   @spec rosters_to_map(Roster.t()) :: map()
   def rosters_to_map(book) do
@@ -247,21 +247,21 @@ defmodule RuleMatch.Codec do
       entries =
         table
         |> Enum.group_by(
-          fn {{provider, _product}, cell} ->
-            {provider, cell.effective_on, cell.terminates_on, cell.meta}
+          fn {{member, _category}, cell} ->
+            {member, cell.effective_on, cell.terminates_on, cell.meta}
           end,
-          fn {{_provider, product}, _cell} -> product end
+          fn {{_member, category}, _cell} -> category end
         )
-        |> Enum.map(fn {{provider, from, to, meta}, products} ->
+        |> Enum.map(fn {{member, from, to, meta}, categories} ->
           %{
-            "provider" => provider,
-            "products" => products |> Enum.map(&product_to_json/1) |> Enum.sort(),
+            "member" => member,
+            "categories" => categories |> Enum.map(&category_to_json/1) |> Enum.sort(),
             "effective_on" => to_json_value(from)
           }
           |> put_unless("terminates_on", to_json_value(to), nil)
           |> put_unless("meta", to_json_value(meta), %{})
         end)
-        |> Enum.sort_by(&{&1["provider"], &1["products"]})
+        |> Enum.sort_by(&{&1["member"], &1["categories"]})
 
       {to_string(name), entries}
     end)
@@ -281,19 +281,19 @@ defmodule RuleMatch.Codec do
     do: raise(ArgumentError, "rosters must be an object, got: #{inspect(other)}")
 
   defp put_roster_entry(book, name, %{} = entry) do
-    provider = string!(required!(entry, "provider"), "roster provider")
+    member = string!(required!(entry, "member"), "roster member")
 
-    products =
+    categories =
       case entry do
-        %{"products" => products} ->
-          list!(products, "products")
+        %{"categories" => categories} ->
+          list!(categories, "categories")
 
-        %{"product" => product} ->
-          [product]
+        %{"category" => category} ->
+          [category]
 
         _ ->
           raise ArgumentError,
-                "roster entry for #{inspect(provider)} needs \"product\" or \"products\""
+                "roster entry for #{inspect(member)} needs \"category\" or \"categories\""
       end
 
     opts = [
@@ -302,8 +302,8 @@ defmodule RuleMatch.Codec do
       meta: Map.get(entry, "meta", %{})
     ]
 
-    Enum.reduce(products, book, fn product, acc ->
-      Roster.put(acc, name, provider, product_from_json(product), opts)
+    Enum.reduce(categories, book, fn category, acc ->
+      Roster.put(acc, name, member, category_from_json(category), opts)
     end)
   end
 
@@ -311,11 +311,11 @@ defmodule RuleMatch.Codec do
     raise ArgumentError, "roster #{inspect(name)} entry must be an object, got: #{inspect(other)}"
   end
 
-  defp product_to_json(:any), do: @any_product
-  defp product_to_json(product), do: to_json_value(product)
+  defp category_to_json(:any), do: @any_category
+  defp category_to_json(category), do: to_json_value(category)
 
-  defp product_from_json(@any_product), do: :any
-  defp product_from_json(product), do: product
+  defp category_from_json(@any_category), do: :any
+  defp category_from_json(category), do: category
 
   ## Values
 
@@ -346,8 +346,8 @@ defmodule RuleMatch.Codec do
   @key_order ~w(
     format id name version description normalize downcase dates
     priority tags op field value values pattern from to args roster
-    flags product product_field provider_field as_of_field condition conditions outcome
-    provider products effective_on terminates_on meta rules rosters
+    flags category category_field member_field as_of_field condition conditions outcome
+    member categories effective_on terminates_on meta rules rosters
   )
   @key_rank @key_order |> Enum.uniq() |> Enum.with_index() |> Map.new()
 

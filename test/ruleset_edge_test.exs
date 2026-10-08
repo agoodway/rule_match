@@ -6,13 +6,13 @@ defmodule RuleMatch.RulesetEdgeTest do
     ruleset =
       Ruleset.new(
         normalize: %{
-          downcase: [:payer, :flag, :missing],
+          downcase: [:organization, :flag, :missing],
           dates: [:date, :utc, :naive, :invalid, :number, :missing]
         }
       )
 
     candidate = %{
-      "payer" => " ACME ",
+      "organization" => " ACME ",
       flag: false,
       date: " 2026-01-01 ",
       utc: ~U[2026-01-02 23:00:00Z],
@@ -23,7 +23,7 @@ defmodule RuleMatch.RulesetEdgeTest do
     }
 
     normalized = Ruleset.normalize(ruleset, candidate)
-    assert normalized.payer == "acme"
+    assert normalized.organization == "acme"
     assert normalized.flag == false
     assert normalized.date == ~D[2026-01-01]
     assert normalized.utc == ~D[2026-01-02]
@@ -33,7 +33,7 @@ defmodule RuleMatch.RulesetEdgeTest do
     assert normalized.untouched == " UPPER "
     refute Map.has_key?(normalized, :missing)
     assert Ruleset.normalize(ruleset, normalized) == normalized
-    assert candidate["payer"] == " ACME "
+    assert candidate["organization"] == " ACME "
   end
 
   test "unknown candidate fields remain strings and can be normalized without atom creation" do

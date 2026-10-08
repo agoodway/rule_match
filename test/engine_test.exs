@@ -57,14 +57,14 @@ defmodule RuleMatch.EngineTest do
   test "select all returns ranked matches and preserves original candidates" do
     ruleset =
       Ruleset.new(
-        normalize: %{downcase: [:payer]},
+        normalize: %{downcase: [:organization]},
         rules: [
-          RuleMatch.rule("specific", priority: 2, conditions: [{:eq, :payer, "acme"}]),
+          RuleMatch.rule("specific", priority: 2, conditions: [{:eq, :organization, "acme"}]),
           RuleMatch.rule("fallback")
         ]
       )
 
-    candidate = %{"payer" => " ACME "}
+    candidate = %{"organization" => " ACME "}
 
     assert [
              %{
@@ -78,7 +78,7 @@ defmodule RuleMatch.EngineTest do
   end
 
   test "caller rosters override a matching name and preserve other ruleset rosters" do
-    book = Roster.new() |> Roster.put(:a, "p", "basic") |> Roster.put(:b, "p", "basic")
+    book = Roster.new() |> Roster.put(:a, "p", "read") |> Roster.put(:b, "p", "read")
 
     ruleset =
       Ruleset.new(
@@ -90,35 +90,35 @@ defmodule RuleMatch.EngineTest do
           )
       )
 
-    candidate = %{provider_id: "p", product: "basic", date_of_service: ~D[2026-01-01]}
+    candidate = %{member_id: "p", category: "read", as_of: ~D[2026-01-01]}
     assert {:ok, matches} = RuleMatch.match(ruleset, candidate, rosters: %{"a" => %{}})
     assert Enum.map(matches, & &1.rule.id) == ["b"]
   end
 
-  test "higher-priority plan termination overrides participating roster" do
+  test "higher-priority category shutdown overrides active roster" do
     ruleset =
       Ruleset.new(
-        rosters: Roster.put(Roster.new(), :network, "p", "basic"),
+        rosters: Roster.put(Roster.new(), :access, "p", "read"),
         rules: [
-          RuleMatch.rule("participation",
-            conditions: [{:roster, :network, []}],
-            outcome: %{status: "in"}
+          RuleMatch.rule("membership",
+            conditions: [{:roster, :access, []}],
+            outcome: %{status: "allowed"}
           ),
           RuleMatch.rule("termination",
             priority: 10,
-            conditions: [{:gte, :date_of_service, ~D[2026-07-01]}],
-            outcome: %{status: "out"}
+            conditions: [{:gte, :as_of, ~D[2026-07-01]}],
+            outcome: %{status: "denied"}
           )
         ]
       )
 
-    candidate = %{provider_id: "p", product: "basic", date_of_service: ~D[2026-07-01]}
+    candidate = %{member_id: "p", category: "read", as_of: ~D[2026-07-01]}
 
     assert {:ok,
-            %{rule_id: "termination", status: "out", alternatives: [%{rule_id: "participation"}]}} =
+            %{rule_id: "termination", status: "denied", alternatives: [%{rule_id: "membership"}]}} =
              RuleMatch.decide(ruleset, candidate)
 
-    assert {:ok, %{rule_id: "participation"}} =
-             RuleMatch.decide(ruleset, %{candidate | date_of_service: ~D[2026-06-30]})
+    assert {:ok, %{rule_id: "membership"}} =
+             RuleMatch.decide(ruleset, %{candidate | as_of: ~D[2026-06-30]})
   end
 end
