@@ -16,5 +16,7 @@ if config_env() in [:dev, :test] do
         [url: url]
     end
 
-  config :rule_match, RuleMatch.Dev.Repo, connection
+  for repo <- [RuleMatch.Dev.Repo, RuleMatch.Dev.UnboxedRepo] do
+    config :rule_match, repo, connection
+  end
 end

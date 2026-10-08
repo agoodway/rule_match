@@ -11,6 +11,7 @@ defmodule RuleMatch.MixProject do
       deps: deps(),
       description: "General candidate/rule matcher driven by JSON rulesets.",
       package: [
+        files: ["lib", "priv/rule_match", "mix.exs", ".formatter.exs", "README.md", "LICENSE"],
         licenses: ["MIT"],
         links: %{}
       ],
