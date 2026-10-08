@@ -36,6 +36,35 @@ defmodule RuleMatch.SchemaTest do
     assert has_error?(Rule.changeset(record(), %{rule_id: "x", priority: nil}), :priority)
   end
 
+  test "integer storage bounds reject overflow and accept both endpoints" do
+    for priority <- [-2_147_483_648, 2_147_483_647] do
+      assert Rule.changeset(record(), %{rule_id: "x", priority: priority}).valid?
+    end
+
+    assert Rule.changeset(record(), %{rule_id: "x", position: 2_147_483_647}).valid?
+
+    for priority <- [-2_147_483_649, 2_147_483_648] do
+      assert has_error?(Rule.changeset(record(), %{rule_id: "x", priority: priority}), :priority)
+    end
+
+    assert has_error?(
+             Rule.changeset(record(), %{rule_id: "x", position: 2_147_483_648}),
+             :position
+           )
+
+    assert has_error?(
+             Rule.changeset(%{record() | position: 2_147_483_648}, %{rule_id: "x"}),
+             :position
+           )
+  end
+
+  test "casting retains blank string tags" do
+    tags = ["", "tag", "  ", "\t\n"]
+    changeset = Rule.changeset(record(), %{rule_id: "x", tags: tags})
+    assert changeset.valid?
+    assert Changeset.get_field(changeset, :tags) == tags
+  end
+
   test "parents and associations cannot be assigned through user attributes" do
     assert has_error?(Rule.changeset(record(), %{rule_id: "x", ruleset_id: 99}), :ruleset_id)
     assert has_error?(Rule.changeset(record(), %{rule_id: "x", ruleset: %{id: 99}}), :ruleset)

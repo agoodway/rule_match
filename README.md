@@ -89,14 +89,23 @@ Add `{:postgrex, "~> 0.22"}` to your application's dependencies and configure
 and supervise its Ecto Repo. For an application named `:my_app`:
 
 ```elixir
+# Define this in your application before the Repo uses it.
+Postgrex.Types.define(MyApp.PostgresTypes, [], json: JSON)
+
 defmodule MyApp.Repo do
   use Ecto.Repo, otp_app: :my_app, adapter: Ecto.Adapters.Postgres
 end
 
 # Application configuration; supply your database connection settings too.
 config :my_app, ecto_repos: [MyApp.Repo]
-config :my_app, MyApp.Repo, url: "postgres://user:password@localhost/my_app"
+config :my_app, MyApp.Repo,
+  url: "postgres://user:password@localhost/my_app",
+  types: MyApp.PostgresTypes
 ```
+
+The host-owned types module uses Elixir's built-in `JSON` for JSONB fields.
+Configure it on every Repo used with RuleMatch; Postgrex's default JSON codec
+otherwise requires a separate Jason dependency.
 
 Include `MyApp.Repo` in your application's supervised children. Then select
 the Ecto loader:
@@ -174,8 +183,9 @@ return `{:error, %Ecto.Changeset{}}`; invalid configuration returns
 Attribute maps accept atom or string field names at the top level. Nested JSON
 objects require string keys and JSON values, using the same condition and roster
 shapes as file definitions. Conditions are a JSONB array; `outcome`, `normalize`,
-`rosters`, and `meta` are JSONB objects. Tags are a list of strings. Database
-rules use `rule_id` for the runtime rule's `id`.
+`rosters`, and `meta` are JSONB objects. Tags are a list of strings, including
+empty and whitespace-only strings. Database rules use `rule_id` for the runtime
+rule's `id`.
 
 Ruleset attributes are `key`, `name`, `version`, `description`, `normalize`,
 `rosters`, and `meta`. Rule attributes are `rule_id`, `description`, `priority`,
@@ -187,11 +197,14 @@ the rule functions. The parent comes from the key argument; overriding
 `ruleset_id` or assigning a parent association is rejected. Rule updates may
 rename `rule_id`, which remains unique within its parent.
 
-Rule writes lock the parent row inside a transaction. Omitting a creation
-position appends after the maximum position, starting at zero. Explicit
-positions must be nonnegative; ties and gaps are valid. The Ecto loader reads
-the parent and all rules in one joined snapshot, ordered by position then
-primary key. Matching ranks by priority then recomputed specificity; equal
+Parent and rule writes resolve and lock the parent row inside a transaction.
+A write waiting on a parent deletion or rename returns `{:error, :not_found}`
+for the old key. Omitting a creation position appends after the maximum position,
+starting at zero. Priorities range from -2_147_483_648 to 2_147_483_647;
+positions range from zero to 2_147_483_647. Ties and gaps are valid. Out-of-range
+values, including an automatic append beyond the maximum position, return
+changeset errors. The Ecto loader reads the parent and all rules in one joined
+snapshot, ordered by position then primary key. Matching ranks by priority then recomputed specificity; equal
 scores keep input order, so the first stored rule in that order wins a tie.
 Deleting a parent cascades to its rules.
 

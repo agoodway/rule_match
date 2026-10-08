@@ -109,6 +109,68 @@ defmodule RuleMatch.StoreConcurrencyTest do
     end
   end
 
+  for parent_change <- [:delete, :rename], waiting_mutation <- [:update, :delete] do
+    test "parent #{waiting_mutation} waiting on #{parent_change} resolves the old key after locking",
+         %{key: key, opts: opts} do
+      assert {:ok, parent} = Store.create_ruleset(%{key: key}, opts)
+      caller = self()
+
+      locker =
+        Task.async(fn ->
+          UnboxedRepo.transaction(fn ->
+            UnboxedRepo.one!(from(p in Ruleset, where: p.id == ^parent.id, lock: "FOR UPDATE"),
+              prefix: "rule_match"
+            )
+
+            [[backend_pid]] = UnboxedRepo.query!("SELECT pg_backend_pid()").rows
+            send(caller, {:parent_locked, backend_pid})
+
+            receive do
+              :commit ->
+                case unquote(parent_change) do
+                  :delete ->
+                    assert {:ok, _} = Store.delete_ruleset(key, opts)
+
+                  :rename ->
+                    assert {:ok, _} = Store.update_ruleset(key, %{key: key <> "-renamed"}, opts)
+                end
+            after
+              5_000 -> flunk("parent mutation barrier timed out")
+            end
+          end)
+        end)
+
+      assert_receive {:parent_locked, backend_pid}, 5_000
+
+      waiter =
+        Task.async(fn ->
+          try do
+            case unquote(waiting_mutation) do
+              :update -> Store.update_ruleset(key, %{meta: %{"unexpected" => true}}, opts)
+              :delete -> Store.delete_ruleset(key, opts)
+            end
+          rescue
+            error in Ecto.StaleEntryError -> {:raised, error.__struct__}
+          end
+        end)
+
+      try do
+        await_blocked_parent_mutation(backend_pid)
+      after
+        send(locker.pid, :commit)
+      end
+
+      assert {:ok, _} = Task.await(locker, 10_000)
+      assert {:error, :not_found} = Task.await(waiter, 10_000)
+      assert {:error, :not_found} = Store.fetch_ruleset(key, opts)
+
+      if unquote(parent_change) == :rename do
+        assert {:ok, %{id: id, meta: %{}}} = Store.fetch_ruleset(key <> "-renamed", opts)
+        assert id == parent.id
+      end
+    end
+  end
+
   test "same identities in two migrated prefixes stay isolated" do
     prefixes = for _ <- 1..2, do: "Store-Prefix-#{System.unique_integer([:positive, :monotonic])}"
 
@@ -141,6 +203,34 @@ defmodule RuleMatch.StoreConcurrencyTest do
     assert {:ok, []} = Store.list_rulesets(left)
     assert {:ok, %{rules: [^right_rule]}} = Store.fetch_ruleset("same", right)
     assert {:ok, [^right_rule]} = Store.list_rules("same", right)
+  end
+
+  defp await_blocked_parent_mutation(backend_pid, attempts \\ 100)
+
+  defp await_blocked_parent_mutation(_backend_pid, 0),
+    do: flunk("parent mutation did not wait on the parent lock")
+
+  defp await_blocked_parent_mutation(backend_pid, attempts) do
+    [[blocked]] =
+      UnboxedRepo.query!(
+        """
+        SELECT EXISTS (
+          SELECT 1 FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND $1 = ANY(pg_blocking_pids(pid)) AND query LIKE '%rulesets%'
+        )
+        """,
+        [backend_pid]
+      ).rows
+
+    if blocked do
+      :ok
+    else
+      receive do
+      after
+        10 -> await_blocked_parent_mutation(backend_pid, attempts - 1)
+      end
+    end
   end
 
   defp await_blocked_writer(attempts \\ 100)

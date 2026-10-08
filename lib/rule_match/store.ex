@@ -3,9 +3,9 @@ defmodule RuleMatch.Store do
   Database CRUD for stored rulesets and rules.
 
   Each call resolves the configured Repo and prefix, with caller options taking
-  precedence. Rule mutations lock their parent within a transaction; omitted
-  creation positions append after the current maximum. Positions are otherwise
-  preserved, including ties and gaps.
+  precedence. Parent and rule mutations lock the parent within a transaction.
+  Omitted creation positions append after the current maximum. Positions are
+  otherwise preserved, including ties and gaps.
 
   Always uses the database, regardless of the configured loader adapter.
   Supply an application Repo through `:rule_match, :repo` or `repo:`; the
@@ -71,10 +71,8 @@ defmodule RuleMatch.Store do
   def update_ruleset(key, attrs, opts \\ []) do
     with {:ok, {repo, prefix}} <- Config.store(opts),
          :ok <- identifier(key, :key) do
-      transaction(repo, fn ->
-        with {:ok, parent} <- find_parent(repo, prefix, key) do
-          repo.update(Ruleset.changeset(parent, attrs), prefix: prefix)
-        end
+      with_locked_parent(repo, prefix, key, fn parent ->
+        repo.update(Ruleset.changeset(parent, attrs), prefix: prefix)
       end)
     end
   end
@@ -83,10 +81,8 @@ defmodule RuleMatch.Store do
   def delete_ruleset(key, opts \\ []) do
     with {:ok, {repo, prefix}} <- Config.store(opts),
          :ok <- identifier(key, :key) do
-      transaction(repo, fn ->
-        with {:ok, parent} <- find_parent(repo, prefix, key) do
-          repo.delete(parent, prefix: prefix)
-        end
+      with_locked_parent(repo, prefix, key, fn parent ->
+        repo.delete(parent, prefix: prefix)
       end)
     end
   end

@@ -5,9 +5,9 @@ defmodule RuleMatch.Schemas.Rule do
   Writable attributes are `rule_id`, `description`, `priority`, `position`,
   `conditions`, `outcome`, `tags`, and `meta`. Conditions use string-keyed
   codec objects; outcome and metadata are JSON objects, and tags are strings.
-  `rule_id` is unique within the parent. Positions are nonnegative and may
-  tie or have gaps. `RuleMatch.Store` supplies the parent and default append
-  position; changesets reject parent reassignment. Primary keys and timestamps
+  `rule_id` is unique within the parent. Priorities fit a signed 32-bit integer;
+  positions range from zero to 2_147_483_647 and may tie or have gaps.
+  `RuleMatch.Store` supplies the parent and default append position; changesets reject parent reassignment. Primary keys and timestamps
   are server-managed.
   """
   use Ecto.Schema
@@ -39,9 +39,11 @@ defmodule RuleMatch.Schemas.Rule do
     case StoredData.normalize_attrs(attrs) do
       {:ok, attrs} ->
         record
-        |> cast(attrs, @fields)
+        |> cast(attrs, @fields -- [:tags])
+        |> cast(attrs, [:tags], empty_values: [])
         |> validate_required([:ruleset_id, :rule_id, :priority, :position])
-        |> validate_number(:position, greater_than_or_equal_to: 0)
+        |> validate_storage_integer(:priority, -2_147_483_648, 2_147_483_647)
+        |> validate_storage_integer(:position, 0, 2_147_483_647)
         |> reject_parent(attrs)
         |> validate_definition(attrs)
         |> unique_constraint(:rule_id, name: :rules_ruleset_id_rule_id_index)
@@ -50,6 +52,29 @@ defmodule RuleMatch.Schemas.Rule do
 
       {:error, message} ->
         record |> change() |> add_error(:base, message)
+    end
+  end
+
+  # Check complete fields: Store's automatic append starts on the record,
+  # so validate_number/3 (which only checks changes) would miss its overflow.
+  defp validate_storage_integer(changeset, field, minimum, maximum) do
+    case get_field(changeset, field) do
+      value when is_integer(value) and value < minimum ->
+        add_error(changeset, field, "must be greater than or equal to %{number}",
+          validation: :number,
+          kind: :greater_than_or_equal_to,
+          number: minimum
+        )
+
+      value when is_integer(value) and value > maximum ->
+        add_error(changeset, field, "must be less than or equal to %{number}",
+          validation: :number,
+          kind: :less_than_or_equal_to,
+          number: maximum
+        )
+
+      _ ->
+        changeset
     end
   end
 

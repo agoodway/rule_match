@@ -86,6 +86,83 @@ defmodule RuleMatch.StoreTest do
     assert {:ok, %{rules: [^moved, ^first, ^third]}} = Store.fetch_ruleset("ordered", opts)
   end
 
+  test "blank tags survive writes and match file runtime definitions", %{opts: opts} do
+    tags = ["", "tag", "  ", "\t\n"]
+    assert {:ok, _} = Store.create_ruleset(%{key: "tags"}, opts)
+    assert {:ok, rule} = Store.create_rule("tags", %{rule_id: "tagged", tags: tags}, opts)
+    assert rule.tags == tags
+    assert {:ok, stored} = Store.fetch_rule("tags", "tagged", opts)
+    assert stored.tags == tags
+
+    assert {:ok, runtime} =
+             RuleMatch.Ruleset.load("tags", Keyword.put(opts, :adapter, RuleMatch.Adapters.Ecto))
+
+    assert {:ok, file_runtime} =
+             RuleMatch.Ruleset.from_map(%{"rules" => [%{"id" => "tagged", "tags" => tags}]})
+
+    assert runtime.rules == file_runtime.rules
+    updated_tags = Enum.reverse(tags)
+    assert {:ok, updated} = Store.update_rule("tags", "tagged", %{tags: updated_tags}, opts)
+    assert updated.tags == updated_tags
+    assert {:ok, loaded} = Store.fetch_rule("tags", "tagged", opts)
+    assert loaded.tags == updated_tags
+  end
+
+  test "out-of-range rule integers return changeset errors without writes", %{opts: opts} do
+    assert {:ok, _} = Store.create_ruleset(%{key: "bounds"}, opts)
+    assert {:ok, original} = Store.create_rule("bounds", %{rule_id: "original"}, opts)
+
+    for {field, value} <- [
+          priority: -2_147_483_649,
+          priority: 2_147_483_648,
+          position: 2_147_483_648
+        ] do
+      assert {:error, changeset} =
+               Store.create_rule("bounds", %{field => value, :rule_id => "invalid"}, opts)
+
+      assert Keyword.has_key?(changeset.errors, field)
+
+      assert {:error, changeset} =
+               Store.update_rule("bounds", "original", %{field => value}, opts)
+
+      assert Keyword.has_key?(changeset.errors, field)
+    end
+
+    assert {:ok, [^original]} = Store.list_rules("bounds", opts)
+
+    for {id, priority} <- [{"minimum", -2_147_483_648}, {"maximum", 2_147_483_647}] do
+      assert {:ok, rule} =
+               Store.create_rule(
+                 "bounds",
+                 %{rule_id: id, priority: priority, position: 2_147_483_647},
+                 opts
+               )
+
+      assert rule.priority == priority and rule.position == 2_147_483_647
+    end
+  end
+
+  test "automatic append overflow returns a position error and explicit positions remain usable",
+       %{opts: opts} do
+    assert {:ok, _} = Store.create_ruleset(%{key: "append-limit"}, opts)
+
+    assert {:ok, maximum} =
+             Store.create_rule(
+               "append-limit",
+               %{rule_id: "maximum", position: 2_147_483_647},
+               opts
+             )
+
+    assert {:error, changeset} = Store.create_rule("append-limit", %{rule_id: "overflow"}, opts)
+    assert Keyword.has_key?(changeset.errors, :position)
+    assert {:ok, [^maximum]} = Store.list_rules("append-limit", opts)
+
+    assert {:ok, explicit} =
+             Store.create_rule("append-limit", %{rule_id: "explicit", position: 0}, opts)
+
+    assert explicit.position == 0
+  end
+
   test "keys sort exactly and rule identifiers are scoped to their parent", %{opts: opts} do
     for key <- ["z", "b", "a"] do
       assert {:ok, _} = Store.create_ruleset(%{key: key}, opts)
@@ -208,6 +285,15 @@ defmodule RuleMatch.StoreTest do
       assert {:error, {:invalid_config, _}} = Store.update_rule("x", id, %{}, opts)
       assert {:error, {:invalid_config, _}} = Store.delete_rule("x", id, opts)
     end
+  end
+
+  test "parent mutations propagate unexpected database exceptions", %{opts: opts} do
+    missing_prefix = "missing_store_#{System.unique_integer([:positive, :monotonic])}"
+    invalid_opts = Keyword.put(opts, :prefix, missing_prefix)
+
+    # Separate rolled-back transactions keep both probes usable under Sandbox.
+    assert_raise Postgrex.Error, fn -> Store.update_ruleset("x", %{}, invalid_opts) end
+    assert_raise Postgrex.Error, fn -> Store.delete_ruleset("x", invalid_opts) end
   end
 
   test "parent fetch obtains all children through one joined snapshot", %{opts: opts, repo: repo} do
