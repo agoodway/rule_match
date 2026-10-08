@@ -51,7 +51,7 @@ defmodule RuleMatch.StoredData do
          :ok <- optional_strings(map, [:description]),
          :ok <- integer(Map.get(map, "priority", 0), :priority),
          :ok <- strings(Map.get(map, "tags", []), :tags),
-         :ok <- object(Map.get(map, "outcome", %{}), :outcome),
+         :ok <- validate_outcome(Map.get(map, "outcome", %{})),
          :ok <- object(Map.get(map, "meta", %{}), :meta),
          :ok <- validate_conditions(Map.get(map, "conditions", [])),
          :ok <- decode(:conditions, fn -> Codec.rule_from_map(map) end) do
@@ -108,6 +108,18 @@ defmodule RuleMatch.StoredData do
     do: Enum.all?(value, fn {key, item} -> is_binary(key) and json_value?(item) end)
 
   defp json_value?(_), do: false
+
+  # The codec atomizes only the top-level outcome keys. BEAM atom names
+  # are limited to 255 Unicode code points, regardless of UTF-8 byte length.
+  defp validate_outcome(value) do
+    with :ok <- object(value, :outcome) do
+      each(Map.keys(value), fn key ->
+        if length(String.to_charlist(key)) <= 255,
+          do: :ok,
+          else: error(:outcome, "keys must contain at most 255 Unicode code points")
+      end)
+    end
+  end
 
   defp validate_normalize(value) do
     with :ok <- object(value, :normalize),

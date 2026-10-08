@@ -208,6 +208,38 @@ defmodule RuleMatch.SchemaTest do
            ) == :ok
   end
 
+  test "outcome keys exceeding the codec atom limit become shared validation errors" do
+    for character <- ["k", "é"] do
+      accepted = %{String.duplicate(character, 255) => false}
+      rejected = %{String.duplicate(character, 256) => false}
+      assert StoredData.validate_rule(rule(%{"outcome" => accepted})) == :ok
+      assert {:error, {:outcome, _}} = StoredData.validate_rule(rule(%{"outcome" => rejected}))
+    end
+  end
+
+  test "outcome keys exceeding the codec atom limit become changeset errors" do
+    for character <- ["k", "é"] do
+      accepted = %{String.duplicate(character, 255) => false}
+      rejected = %{String.duplicate(character, 256) => false}
+      assert Rule.changeset(record(), %{rule_id: "x", outcome: accepted}).valid?
+      changeset = Rule.changeset(record(), %{rule_id: "x", outcome: rejected})
+      assert has_error?(changeset, :outcome)
+      refute has_error?(changeset, :conditions)
+    end
+  end
+
+  test "outcome atom limits count code points and leave nested string keys unrestricted" do
+    accepted_key = String.duplicate("e\u0301", 127) <> "e"
+    rejected_key = String.duplicate("e\u0301", 128)
+    nested_key = String.duplicate("n", 256)
+    accepted = %{accepted_key => %{nested_key => false}}
+    rejected = %{rejected_key => false}
+    assert StoredData.validate_rule(rule(%{"outcome" => accepted})) == :ok
+    assert Rule.changeset(record(), %{rule_id: "x", outcome: accepted}).valid?
+    assert {:error, {:outcome, _}} = StoredData.validate_rule(rule(%{"outcome" => rejected}))
+    assert has_error?(Rule.changeset(record(), %{rule_id: "x", outcome: rejected}), :outcome)
+  end
+
   test "tags require string items and scalar rule values are checked" do
     for bad <- [nil, "x", [1], [:tag]] do
       assert {:error, {:tags, _}} = StoredData.validate_rule(rule(%{"tags" => bad}))
