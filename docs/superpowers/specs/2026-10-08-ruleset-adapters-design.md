@@ -17,6 +17,9 @@ rules, two database schemas, JSON data for rosters, and uncached loading. The
 existing file cache will be removed. The consuming application supplies and
 starts its Repo and runs the library migrations.
 
+The repository will also include Docker Compose configuration for a local
+PostgreSQL database used during development and integration testing.
+
 Success means file and database representations produce equivalent matching
 results, database edits appear on the next load, and applications can manage
 stored rules through validated persistence functions.
@@ -30,7 +33,8 @@ because regular dependencies simplify compilation, testing, and consumption.
 Add `ecto_sql` and `ecto_evolver` as regular dependencies. PostgreSQL is the
 initial supported database, matching EctoEvolver's current support. The
 consuming application's PostgreSQL Repo supplies its database driver and
-connection configuration; integration tests use a test Repo and Postgrex.
+connection configuration; this repository's development and test setup uses
+a local Repo and Postgrex, available only in those environments.
 
 Keep these responsibilities separate:
 
@@ -277,6 +281,46 @@ not run automatically when the library starts or a ruleset is loaded.
 
 EctoEvolver reference: <https://github.com/agoodway/ecto_evolver>.
 
+## Local development and test database
+
+Add a root-level `compose.yaml` with one PostgreSQL service. Use an official
+PostgreSQL image pinned to an explicit major version and document that version.
+The service supplies two databases, `rule_match_dev` and `rule_match_test`,
+with local username and password `rule_match`. Development and testing use
+separate databases so test cleanup does not affect development data.
+
+Configure `POSTGRES_DB` as `rule_match_dev` and mount a bootstrap SQL file at
+`docker/postgres/init.sql` into `/docker-entrypoint-initdb.d/` to create
+`rule_match_test` with the same owner when the database volume is initialized.
+Use a Compose-managed named volume for persistent PostgreSQL data. Document
+that initialization scripts run only for a new volume and that removing the
+volume resets both local databases.
+
+Bind the database port to loopback. Default the host port to `5432`, with a
+`RULE_MATCH_POSTGRES_PORT` override for machines already running PostgreSQL.
+Add a `pg_isready` health check so contributors can wait for database readiness
+using `docker compose up -d --wait`.
+
+The repository's development and test Repo configuration uses those local
+credentials, the selected host port, and the database appropriate to its Mix
+environment. Allow `RULE_MATCH_DATABASE_URL` to override the connection for an
+existing PostgreSQL server or CI. Test configuration uses Ecto SQL Sandbox;
+concurrency tests use separate committed connections and explicit cleanup
+where sandbox sharing would conceal locking behavior.
+
+Provide a documented development/test setup command that starts the local
+Repo and runs `RuleMatch.Migration` through Ecto's migrator for the selected
+database. Running the tests after setup starts the test Repo through the test
+harness. This Repo and setup tooling belong to this repository's dev/test
+environments; consuming applications continue to supply their own Repo and
+application migrations.
+
+The README includes the complete workflow: starting Compose and waiting for
+health, initializing each database's library tables, running the tests,
+overriding connection settings, stopping the service, and explicitly resetting
+the local volume. Keep Docker bootstrap files outside the library's packaged
+migration assets.
+
 ## Verification and documentation
 
 Use existing ExUnit coverage for runtime matching and JSON conversion. Add
@@ -309,14 +353,23 @@ they must not silently pass by skipping unavailable integration coverage.
 The test setup supplies database connection configuration and manages its
 test Repo without adding a production Repo to the library.
 
+Validate the Compose configuration with `docker compose config`. Verify the
+documented workflow from a fresh Compose volume: the service becomes healthy,
+both databases exist, dev/test migrations run, and the PostgreSQL integration
+suite passes. Confirm that a test write does not appear in the development
+database and that the port and database URL overrides select the intended
+connection.
+
 Update the README and module documentation with both loading modes,
 configuration and override examples, CRUD return values, migration setup,
-prefix requirements, and uncached snapshot behavior. Replace statements that
-rules must live in files or that the package has no runtime dependencies.
+prefix requirements, uncached snapshot behavior, and the local Docker Compose
+workflow. Replace statements that rules must live in files or that the package
+has no runtime dependencies.
 
 ## Scope boundaries
 
-This change provides loading, two stored schemas, CRUD, and versioned schema
-installation. It does not add caching, a rule editor, a production Repo,
+This change provides loading, two stored schemas, CRUD, versioned schema
+installation, and Docker Compose tooling for local dev/test PostgreSQL.
+It does not add caching, a rule editor, a production Repo,
 additional database backends, separate roster tables, bulk replacement,
 automatic migrations, or a new matching algorithm.
