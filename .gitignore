@@ -6,3 +6,4 @@ erl_crash.dump
 *.ez
 rule_match-*.tar
 .elixir_ls/
+/.worktrees/
