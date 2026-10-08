@@ -4,6 +4,7 @@ defmodule RuleMatch.Schemas.Ruleset do
 
   import Ecto.Changeset
   alias RuleMatch.StoredData
+  alias RuleMatch.Types.StoredJSON
 
   @fields [:key, :name, :version, :description, :normalize, :rosters, :meta]
   @json_fields [:normalize, :rosters, :meta]
@@ -13,9 +14,9 @@ defmodule RuleMatch.Schemas.Ruleset do
     field(:name, :string)
     field(:version, :string)
     field(:description, :string)
-    field(:normalize, :map, default: %{"downcase" => [], "dates" => []})
-    field(:rosters, :map, default: %{})
-    field(:meta, :map, default: %{})
+    field(:normalize, StoredJSON, default: %{"downcase" => [], "dates" => []})
+    field(:rosters, StoredJSON, default: %{})
+    field(:meta, StoredJSON, default: %{})
     has_many(:rules, RuleMatch.Schemas.Rule)
     timestamps(type: :utc_datetime_usec)
   end

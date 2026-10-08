@@ -4,6 +4,7 @@ defmodule RuleMatch.Schemas.Rule do
 
   import Ecto.Changeset
   alias RuleMatch.StoredData
+  alias RuleMatch.Types.StoredJSON
 
   @fields [:rule_id, :description, :priority, :position, :conditions, :outcome, :tags, :meta]
   @json_fields [:conditions, :outcome, :tags, :meta]
@@ -14,10 +15,10 @@ defmodule RuleMatch.Schemas.Rule do
     field(:description, :string)
     field(:priority, :integer, default: 0)
     field(:position, :integer)
-    field(:conditions, {:array, :map}, default: [])
-    field(:outcome, :map, default: %{})
+    field(:conditions, {:array, StoredJSON}, default: [])
+    field(:outcome, StoredJSON, default: %{})
     field(:tags, {:array, :string}, default: [])
-    field(:meta, :map, default: %{})
+    field(:meta, StoredJSON, default: %{})
     timestamps(type: :utc_datetime_usec)
   end
 
