@@ -1,0 +1,21 @@
+# Workie configuration for rule_match.
+# Elixir library: no secrets to copy and no per-branch database.
+# `workie begin` creates the worktree in ../rule_match-worktrees/<branch>.
+
+files_to_copy: []
+
+hooks:
+  post_create:
+    - "echo 'Setting up new worktree...'"
+    - "mix deps.get"
+    - "mix compile"
+
+default_provider: github
+
+providers:
+  github:
+    enabled: true
+    settings:
+      token_env: WORKIE_GITHUB_TOKEN
+      owner: agoodway
+      repo: rule_match
