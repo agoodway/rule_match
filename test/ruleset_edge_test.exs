@@ -115,6 +115,8 @@ defmodule RuleMatch.RulesetEdgeTest do
              "invalid JSON: :unexpected_end"
 
     assert Ruleset.format_error(:enoent) == "no such file or directory"
+    assert Ruleset.format_error(:not_found) == "ruleset not found"
+    assert Ruleset.format_error({:invalid_config, "missing repo"}) == "missing repo"
     assert Ruleset.format_error({:other, 1}) == "{:other, 1}"
   end
 end

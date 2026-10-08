@@ -1,0 +1,3 @@
+DROP TABLE $SCHEMA$.rules;
+--SPLIT--
+DROP TABLE $SCHEMA$.rulesets;

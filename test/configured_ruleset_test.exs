@@ -19,7 +19,6 @@ defmodule RuleMatch.ConfiguredRulesetTest do
       end
 
       File.rm(path)
-      :persistent_term.erase({RuleMatch, Path.expand(path)})
     end)
 
     {:ok, path: path}
@@ -35,20 +34,20 @@ defmodule RuleMatch.ConfiguredRulesetTest do
     assert RuleMatch.ruleset(path).name == "original"
   end
 
-  test "requires a configured path for the default" do
+  test "requires a configured identifier for the default" do
     assert_raise ArgumentError, ~r/no ruleset configured/, fn -> RuleMatch.ruleset() end
     Application.put_env(:rule_match, :ruleset, :invalid)
-    assert_raise ArgumentError, ~r/ruleset.*path/, fn -> RuleMatch.ruleset() end
+    assert_raise ArgumentError, ~r/ruleset.*string/, fn -> RuleMatch.ruleset() end
   end
 
-  test "caches unchanged files under their absolute path", %{path: path} do
-    loaded = RuleMatch.ruleset(path)
+  test "reads edited files even when their modification time is unchanged", %{path: path} do
+    assert RuleMatch.ruleset(path).name == "original"
     mtime = File.stat!(path).mtime
-    File.write!(path, "invalid json")
+    Ruleset.save(Ruleset.new(name: "updated"), path)
     File.touch!(path, mtime)
 
     relative = Path.relative_to(path, File.cwd!())
-    assert RuleMatch.ruleset(relative) == loaded
+    assert RuleMatch.ruleset(relative).name == "updated"
   end
 
   test "reloads files when their modification time changes", %{path: path} do
@@ -58,16 +57,19 @@ defmodule RuleMatch.ConfiguredRulesetTest do
     assert RuleMatch.ruleset(path).name == "updated"
   end
 
-  test "rejects invalid files after a cached file changes", %{path: path} do
+  test "rejects malformed replacements with unchanged modification times", %{path: path} do
     RuleMatch.ruleset(path)
+    mtime = File.stat!(path).mtime
     File.write!(path, "invalid json")
-    File.touch!(path, {{2000, 1, 1}, {0, 0, 0}})
+    File.touch!(path, mtime)
+    assert {:error, {:invalid_json, _}} = Ruleset.load(path)
     assert_raise ArgumentError, ~r/cannot load ruleset/, fn -> RuleMatch.ruleset(path) end
   end
 
-  test "reports deleted files rather than returning stale cache entries", %{path: path} do
+  test "reports deleted files after a successful load", %{path: path} do
     RuleMatch.ruleset(path)
     File.rm!(path)
-    assert_raise File.Error, fn -> RuleMatch.ruleset(path) end
+    assert {:error, :enoent} = Ruleset.load(path)
+    assert_raise ArgumentError, ~r/no such file/, fn -> RuleMatch.ruleset(path) end
   end
 end

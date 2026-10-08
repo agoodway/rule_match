@@ -15,7 +15,7 @@ defmodule RuleMatch do
   of leaf constraints, so a rule checking organization, tier, and region
   beats one checking only organization at the same priority.
 
-  Rules are data. A `RuleMatch.Ruleset` is loaded from a JSON file and
+  Rules are data. A `RuleMatch.Ruleset` is loaded through an adapter and
   carries the rules, the rosters they reference, and the candidate
   normalization. Every function that takes rules also takes a ruleset; a
   ruleset's rosters join the context and its normalization is applied to
@@ -25,6 +25,12 @@ defmodule RuleMatch do
       RuleMatch.decide(ruleset, %{organization: "acme", as_of: "2026-07-03"})
 
   The engine has no domain knowledge and ships no rules.
+
+  The default loader is `RuleMatch.Adapters.File`; configure
+  `adapter: RuleMatch.Adapters.Ecto`, an application `repo:`, and a `prefix:`
+  to load database keys instead. Both adapters read on every call. A loaded
+  ruleset is a snapshot; reload to observe changes. Database writes belong
+  to `RuleMatch.Store`, while `RuleMatch.Ruleset.save/2` exports a JSON file.
   """
 
   alias RuleMatch.{Condition, Match, Rule, Ruleset}
@@ -34,48 +40,35 @@ defmodule RuleMatch do
   @type context :: map()
 
   @doc """
-  Load a cached ruleset from a file.
+  Load a ruleset through the configured adapter, raising on expected errors.
 
-  Without a path, uses `config :rule_match, :ruleset, "/path/to/rules.json"`.
-  Entries are cached by absolute path and file modification time. An edited
-  file is reloaded on the next call when its modification time changes.
-  Edits that preserve the modification time are not detected.
+  Without an identifier, uses `config :rule_match, :ruleset, identifier`.
+  The default adapter reads a JSON file on every call. Pass `adapter: Module`
+  or configure `:rule_match, :adapter` to use another loader. Per-call options
+  override application configuration.
 
-  Raises if the default path is unconfigured, the file cannot be read, or
-  the ruleset is invalid. Use `RuleMatch.Ruleset.load!/1` for an uncached load.
+  `RuleMatch.Adapters.Ecto` interprets identifiers as exact, case-sensitive
+  database keys and requires an application Repo. Its default prefix is
+  `"rule_match"`; `repo:` and `prefix:` can also be overridden per call.
+
+  Raises `ArgumentError` if configuration or loading fails. Unexpected
+  adapter exceptions propagate. Use `RuleMatch.Ruleset.load/2` for error tuples.
   """
   @spec ruleset() :: Ruleset.t()
-  @spec ruleset(Path.t()) :: Ruleset.t()
-  def ruleset(path \\ configured_ruleset_path()) when is_binary(path) do
-    path = Path.expand(path)
-    mtime = File.stat!(path).mtime
-    key = {__MODULE__, path}
-
-    case :persistent_term.get(key, nil) do
-      {^mtime, ruleset} ->
-        ruleset
-
-      _ ->
-        ruleset = Ruleset.load!(path)
-        :persistent_term.put(key, {mtime, ruleset})
-        ruleset
-    end
-  end
-
-  defp configured_ruleset_path do
+  def ruleset do
     case Application.get_env(:rule_match, :ruleset) do
-      path when is_binary(path) ->
-        path
-
       nil ->
         raise ArgumentError,
-              "no ruleset configured; set `config :rule_match, :ruleset, \"/path/to/rules.json\"` " <>
-                "or pass a path to RuleMatch.ruleset/1"
+              "no ruleset configured; set `config :rule_match, :ruleset, identifier` " <>
+                "or pass an identifier to RuleMatch.ruleset/1"
 
-      _ ->
-        raise ArgumentError, "configured :rule_match ruleset must be a file path string"
+      identifier ->
+        ruleset(identifier)
     end
   end
+
+  @spec ruleset(String.t(), keyword()) :: Ruleset.t()
+  def ruleset(identifier, opts \\ []), do: Ruleset.load!(identifier, opts)
 
   @doc """
   Validate rules and return them with specificity precomputed in `:meta`.
