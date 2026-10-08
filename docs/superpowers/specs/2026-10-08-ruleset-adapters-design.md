@@ -308,18 +308,56 @@ existing PostgreSQL server or CI. Test configuration uses Ecto SQL Sandbox;
 concurrency tests use separate committed connections and explicit cleanup
 where sandbox sharing would conceal locking behavior.
 
-Provide a documented development/test setup command that starts the local
-Repo and runs `RuleMatch.Migration` through Ecto's migrator for the selected
-database. Running the tests after setup starts the test Repo through the test
-harness. This Repo and setup tooling belong to this repository's dev/test
-environments; consuming applications continue to supply their own Repo and
-application migrations.
+Provide `mix rule_match.setup` for development/test setup. It starts the local
+Repo, creates the selected database if necessary, and runs
+`RuleMatch.Migration` through Ecto's migrator. The task is safe to repeat and
+uses the selected Mix environment and connection overrides. Running the tests
+after setup starts the test Repo through the test harness. This Repo and setup
+tooling belong to this repository's dev/test environments; consuming
+applications continue to supply their own Repo and application migrations.
 
 The README includes the complete workflow: starting Compose and waiting for
 health, initializing each database's library tables, running the tests,
 overriding connection settings, stopping the service, and explicitly resetting
 the local volume. Keep Docker bootstrap files outside the library's packaged
 migration assets.
+
+### README guide for running tests locally
+
+Add a dedicated README section titled `Running tests locally` that a new
+contributor can follow from a fresh checkout. State the prerequisites:
+Elixir 1.18+, a compatible Erlang/OTP installation, and Docker with Compose v2.
+Explain that PostgreSQL runs in Docker while Mix and the tests run on the host.
+
+The guide includes this complete default workflow in runnable command blocks:
+
+```sh
+mix deps.get
+docker compose up -d --wait
+MIX_ENV=test mix rule_match.setup
+mix test
+```
+
+Explain that setup targets `rule_match_test` under `MIX_ENV=test`, installs the
+library tables, and is safe to repeat. Include how to run one test file and one
+test by file and line using `mix test path/to/test.exs` and
+`mix test path/to/test.exs:LINE`, with real examples selected from the final
+test suite. Also show `mix rule_match.setup` for initializing
+`rule_match_dev` when working interactively in the default development
+environment.
+
+Document the default credentials and databases, provide a runnable example
+that passes the same `RULE_MATCH_POSTGRES_PORT` override to Compose, setup,
+and tests, and explain `RULE_MATCH_DATABASE_URL` for an existing server or CI.
+Include `docker compose ps` and `docker compose logs postgres` for checking
+startup or connection problems; the Compose service is named `postgres`.
+
+Show `docker compose down` for stopping PostgreSQL while preserving its data.
+Show `docker compose down -v` as an explicit reset, clearly stating that it
+deletes both local databases, followed by the startup and test setup commands
+needed to recreate them. The ordinary test workflow preserves development
+data. Document that the full test suite requires PostgreSQL, including its
+database integration tests.
 
 ## Verification and documentation
 
@@ -359,6 +397,10 @@ both databases exist, dev/test migrations run, and the PostgreSQL integration
 suite passes. Confirm that a test write does not appear in the development
 database and that the port and database URL overrides select the intended
 connection.
+
+Execute the README's default test instructions in order and verify they are
+sufficient for a new checkout. Check that the guide matches the implemented
+Compose service, setup task, connection options, and test examples.
 
 Update the README and module documentation with both loading modes,
 configuration and override examples, CRUD return values, migration setup,
