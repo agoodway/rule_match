@@ -34,6 +34,50 @@ defmodule RuleMatch do
   @type context :: map()
 
   @doc """
+  Load a cached ruleset from a file.
+
+  Without a path, uses `config :rule_match, :ruleset, "/path/to/rules.json"`.
+  Entries are cached by absolute path and file modification time. An edited
+  file is reloaded on the next call when its modification time changes.
+  Edits that preserve the modification time are not detected.
+
+  Raises if the default path is unconfigured, the file cannot be read, or
+  the ruleset is invalid. Use `RuleMatch.Ruleset.load!/1` for an uncached load.
+  """
+  @spec ruleset() :: Ruleset.t()
+  @spec ruleset(Path.t()) :: Ruleset.t()
+  def ruleset(path \\ configured_ruleset_path()) when is_binary(path) do
+    path = Path.expand(path)
+    mtime = File.stat!(path).mtime
+    key = {__MODULE__, path}
+
+    case :persistent_term.get(key, nil) do
+      {^mtime, ruleset} ->
+        ruleset
+
+      _ ->
+        ruleset = Ruleset.load!(path)
+        :persistent_term.put(key, {mtime, ruleset})
+        ruleset
+    end
+  end
+
+  defp configured_ruleset_path do
+    case Application.get_env(:rule_match, :ruleset) do
+      path when is_binary(path) ->
+        path
+
+      nil ->
+        raise ArgumentError,
+              "no ruleset configured; set `config :rule_match, :ruleset, \"/path/to/rules.json\"` " <>
+                "or pass a path to RuleMatch.ruleset/1"
+
+      _ ->
+        raise ArgumentError, "configured :rule_match ruleset must be a file path string"
+    end
+  end
+
+  @doc """
   Validate rules and return them with specificity precomputed in `:meta`.
 
   Accepts `%RuleMatch.Rule{}` or keyword / map attrs.

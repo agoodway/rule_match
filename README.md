@@ -26,6 +26,28 @@ RuleMatch.decide(ruleset, %{"payer" => "Acme", "plan_type" => "PPO"})
 RuleMatch.Ruleset.save(ruleset, "rules.json")
 ```
 
+For a configured default and cached file loading, set the path in your application's config:
+
+```elixir
+config :rule_match, :ruleset, "/path/to/rules.json"
+```
+
+Then load the configured ruleset or an explicit path:
+
+```elixir
+ruleset = RuleMatch.ruleset()
+RuleMatch.decide(ruleset, %{"payer" => "Acme", "plan_type" => "PPO"})
+
+other_ruleset = RuleMatch.ruleset("other_rules.json")
+```
+
+`RuleMatch.ruleset/0,1` caches each file by absolute path and modification time,
+reloading on the next call when that time changes. Edits that preserve the
+timestamp are not detected. Cache entries stay in memory for the VM's lifetime
+and are replaced when reloaded. Missing configuration, unreadable files, and
+invalid rulesets raise errors. `RuleMatch.Ruleset.load/1` and `load!/1` always
+read the file without caching.
+
 `from_json/1` / `to_json/1` and `from_map/1` / `to_map/1` are the in-memory forms. Saving then loading gives back the same rules and rosters. `to_json/1` uses a stable key order and puts short conditions on one line, so diffs of an edited file stay small.
 
 ```json
