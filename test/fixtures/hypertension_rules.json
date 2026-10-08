@@ -1,0 +1,77 @@
+{
+  "format": 1,
+  "name": "hypertension",
+  "version": "2017-aha",
+  "rules": [
+    {
+      "id": "crisis",
+      "priority": 50,
+      "conditions": [
+        {
+          "op": "any",
+          "conditions": [
+            {"op": "gte", "field": "systolic", "value": 180},
+            {"op": "gte", "field": "diastolic", "value": 120}
+          ]
+        }
+      ],
+      "outcome": {"stage": "crisis", "action": "refer_now"}
+    },
+    {
+      "id": "stage_2",
+      "priority": 40,
+      "conditions": [
+        {
+          "op": "any",
+          "conditions": [
+            {"op": "gte", "field": "systolic", "value": 140},
+            {"op": "gte", "field": "diastolic", "value": 90}
+          ]
+        }
+      ],
+      "outcome": {"stage": "stage_2", "action": "treat"}
+    },
+    {
+      "id": "stage_1",
+      "priority": 30,
+      "conditions": [
+        {
+          "op": "any",
+          "conditions": [
+            {"op": "between", "field": "systolic", "from": 130, "to": 139},
+            {"op": "between", "field": "diastolic", "from": 80, "to": 89}
+          ]
+        }
+      ],
+      "outcome": {"stage": "stage_1", "action": "lifestyle_and_recheck"}
+    },
+    {
+      "id": "elevated",
+      "priority": 20,
+      "conditions": [
+        {
+          "op": "all",
+          "conditions": [
+            {"op": "between", "field": "systolic", "from": 120, "to": 129},
+            {"op": "lt", "field": "diastolic", "value": 80}
+          ]
+        }
+      ],
+      "outcome": {"stage": "elevated", "action": "lifestyle"}
+    },
+    {
+      "id": "normal",
+      "priority": 10,
+      "conditions": [
+        {
+          "op": "all",
+          "conditions": [
+            {"op": "lt", "field": "systolic", "value": 120},
+            {"op": "lt", "field": "diastolic", "value": 80}
+          ]
+        }
+      ],
+      "outcome": {"stage": "normal", "action": "none"}
+    }
+  ]
+}
