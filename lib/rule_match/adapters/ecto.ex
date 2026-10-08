@@ -1,5 +1,19 @@
 defmodule RuleMatch.Adapters.Ecto do
-  @moduledoc "Load a runtime ruleset from an ordered database snapshot on every call."
+  @moduledoc """
+  Load a runtime ruleset from an ordered database snapshot on every call.
+
+  The identifier is an exact, case-sensitive ruleset key. Configure an
+  application Repo with `:rule_match, :repo` or pass `repo:`. The default
+  prefix is `"rule_match"`; configure `:prefix` or pass `prefix:` to change
+  it. Install tables through `RuleMatch.Migration` using the same prefix.
+
+  A single joined query loads the parent and rules ordered by position and
+  primary key. Stored JSON is validated and decoded through the common
+  runtime codec, recomputing specificity. Missing keys return
+  `{:error, :not_found}`; malformed definitions return
+  `{:error, {:invalid_ruleset, message}}`. Database exceptions propagate.
+  No migrations or caching occur during loading.
+  """
 
   @behaviour RuleMatch.Adapter
 

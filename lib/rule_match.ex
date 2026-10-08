@@ -25,6 +25,12 @@ defmodule RuleMatch do
       RuleMatch.decide(ruleset, %{payer: "acme", date_of_service: "2026-07-03"})
 
   The engine has no domain knowledge and ships no rules.
+
+  The default loader is `RuleMatch.Adapters.File`; configure
+  `adapter: RuleMatch.Adapters.Ecto`, an application `repo:`, and a `prefix:`
+  to load database keys instead. Both adapters read on every call. A loaded
+  ruleset is a snapshot; reload to observe changes. Database writes belong
+  to `RuleMatch.Store`, while `RuleMatch.Ruleset.save/2` exports a JSON file.
   """
 
   alias RuleMatch.{Condition, Match, Rule, Ruleset}
@@ -40,6 +46,10 @@ defmodule RuleMatch do
   The default adapter reads a JSON file on every call. Pass `adapter: Module`
   or configure `:rule_match, :adapter` to use another loader. Per-call options
   override application configuration.
+
+  `RuleMatch.Adapters.Ecto` interprets identifiers as exact, case-sensitive
+  database keys and requires an application Repo. Its default prefix is
+  `"rule_match"`; `repo:` and `prefix:` can also be overridden per call.
 
   Raises `ArgumentError` if configuration or loading fails. Unexpected
   adapter exceptions propagate. Use `RuleMatch.Ruleset.load/2` for error tuples.

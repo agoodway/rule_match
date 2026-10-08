@@ -3,6 +3,13 @@ defmodule RuleMatch.Ruleset do
   A rule set loaded from data: rules, the rosters they reference, and how to
   normalize a candidate before matching.
 
+  `load/2` selects the configured adapter, defaulting to
+  `RuleMatch.Adapters.File`. The file identifier is a path; the Ecto
+  identifier is an exact database key. Options override application
+  configuration. Both sources are uncached; this struct is a snapshot.
+  `save/2` always exports a JSON file. Database persistence uses
+  `RuleMatch.Store` and separate `RuleMatch.Schemas` records.
+
   A ruleset file is JSON:
 
       {
@@ -82,7 +89,14 @@ defmodule RuleMatch.Ruleset do
     }
   end
 
-  @doc "Load a ruleset through the configured adapter, defaulting to a JSON file."
+  @doc """
+  Load a ruleset through the configured adapter, defaulting to a JSON file.
+
+  Returns `{:ok, ruleset}` or `{:error, reason}` for expected failures.
+  Identifiers must be nonblank strings. The Ecto adapter requires `repo:`
+  and defaults to prefix `"rule_match"`. Per-call `adapter:`, `repo:`, and
+  `prefix:` override configuration. Unexpected exceptions propagate.
+  """
   @spec load(String.t(), keyword()) :: {:ok, t()} | {:error, term()}
   def load(identifier, opts \\ []) do
     if is_binary(identifier) and String.trim(identifier) != "" do
@@ -107,7 +121,7 @@ defmodule RuleMatch.Ruleset do
     end
   end
 
-  @doc "Encode and write a ruleset file."
+  @doc "Encode and export a JSON file, returning :ok or an error tuple; does not write to Store."
   @spec save(t(), Path.t()) :: :ok | {:error, term()}
   def save(%__MODULE__{} = ruleset, path), do: File.write(path, to_json(ruleset))
 

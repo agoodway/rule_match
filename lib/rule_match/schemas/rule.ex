@@ -1,5 +1,15 @@
 defmodule RuleMatch.Schemas.Rule do
-  @moduledoc "An Ecto record for a stored rule; its parent is set by trusted callers."
+  @moduledoc """
+  An Ecto record for a stored rule, distinct from a runtime `RuleMatch.Rule`.
+
+  Writable attributes are `rule_id`, `description`, `priority`, `position`,
+  `conditions`, `outcome`, `tags`, and `meta`. Conditions use string-keyed
+  codec objects; outcome and metadata are JSON objects, and tags are strings.
+  `rule_id` is unique within the parent. Positions are nonnegative and may
+  tie or have gaps. `RuleMatch.Store` supplies the parent and default append
+  position; changesets reject parent reassignment. Primary keys and timestamps
+  are server-managed.
+  """
   use Ecto.Schema
 
   import Ecto.Changeset

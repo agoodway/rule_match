@@ -1,5 +1,13 @@
 defmodule RuleMatch.Schemas.Ruleset do
-  @moduledoc "An Ecto record for a stored ruleset definition."
+  @moduledoc """
+  An Ecto record for a stored ruleset definition, distinct from a runtime ruleset.
+
+  Writable attributes are `key`, `name`, `version`, `description`, `normalize`,
+  `rosters`, and `meta`. JSON objects require string keys. The exact key is
+  unique; primary keys and timestamps are server-managed. Changesets reject
+  nested rules. Use `RuleMatch.Store` to write and fetch records, and the
+  Ecto loader to obtain runtime `RuleMatch.Ruleset` snapshots.
+  """
   use Ecto.Schema
 
   import Ecto.Changeset

@@ -6,6 +6,29 @@ defmodule RuleMatch.Store do
   precedence. Rule mutations lock their parent within a transaction; omitted
   creation positions append after the current maximum. Positions are otherwise
   preserved, including ties and gaps.
+
+  Always uses the database, regardless of the configured loader adapter.
+  Supply an application Repo through `:rule_match, :repo` or `repo:`; the
+  prefix defaults to `"rule_match"` and may be overridden with `prefix:`.
+  Successful calls return `{:ok, record}` or `{:ok, records}` using stored
+  schema structs. Missing parents or rules return `{:error, :not_found}`,
+  invalid writes return `{:error, Ecto.Changeset.t()}`, and configuration
+  errors return `{:error, {:invalid_config, message}}`. Database exceptions
+  propagate. Empty lists are successful results.
+
+  Attribute maps accept atom or string field names; nested JSON objects
+  require string keys and JSON values. Conditions use the codec's JSON
+  representation. Ruleset writes affect only parent attributes; nested
+  `rules` input is rejected. Rule parents come from the key argument;
+  `ruleset_id` and parent associations cannot be assigned through attrs.
+  Primary keys and timestamps are server-managed. Keys are case-sensitive;
+  `rule_id` is unique within its parent. Updates may rename either identifier.
+
+  Omitting a creation position appends from zero. Rules load by position then
+  primary key, including equal positions and gaps. `fetch_ruleset/2` loads
+  ordered rules in one joined query; list results do not preload associations.
+  Deleting a parent cascades to its rules. Use `RuleMatch.Ruleset.load/2`
+  with the Ecto adapter to decode a runtime snapshot for matching.
   """
 
   import Ecto.Query
