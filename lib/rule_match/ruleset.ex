@@ -29,7 +29,7 @@ defmodule RuleMatch.Ruleset do
         }
       }
 
-  See `RuleMatch.Codec` for every condition shape. `load/1` and `save/2`
+  See `RuleMatch.Codec` for every condition shape. File loading and `save/2`
   round-trip: `ruleset |> to_json() |> from_json()` gives back the same rules
   and rosters.
 
@@ -62,7 +62,7 @@ defmodule RuleMatch.Ruleset do
   @doc """
   Build a ruleset in code. Rules are compiled with `RuleMatch.compile/1`.
 
-  Mostly for tests and for exporting; production rules belong in a file.
+  Mostly for tests and for exporting; rules can be loaded through an adapter.
   """
   @spec new(keyword()) :: t()
   def new(attrs \\ []) do
@@ -82,23 +82,28 @@ defmodule RuleMatch.Ruleset do
     }
   end
 
-  @doc "Read and decode a ruleset file."
-  @spec load(Path.t()) :: {:ok, t()} | {:error, term()}
-  def load(path) do
-    with {:ok, json} <- File.read(path) do
-      from_json(json)
+  @doc "Load a ruleset through the configured adapter, defaulting to a JSON file."
+  @spec load(String.t(), keyword()) :: {:ok, t()} | {:error, term()}
+  def load(identifier, opts \\ []) do
+    if is_binary(identifier) and String.trim(identifier) != "" do
+      with {:ok, resolved} <- RuleMatch.Config.loader(opts) do
+        adapter = Keyword.fetch!(resolved, :adapter)
+        adapter.load(identifier, resolved)
+      end
+    else
+      {:error, {:invalid_config, "ruleset identifier must be a nonblank string"}}
     end
   end
 
-  @doc "Like `load/1`, raising on error."
-  @spec load!(Path.t()) :: t()
-  def load!(path) do
-    case load(path) do
+  @doc "Like `load/2`, raising ArgumentError for expected loading errors."
+  @spec load!(String.t(), keyword()) :: t()
+  def load!(identifier, opts \\ []) do
+    case load(identifier, opts) do
       {:ok, ruleset} ->
         ruleset
 
       {:error, reason} ->
-        raise ArgumentError, "cannot load ruleset #{path}: #{format_error(reason)}"
+        raise ArgumentError, "cannot load ruleset #{inspect(identifier)}: #{format_error(reason)}"
     end
   end
 
@@ -194,7 +199,9 @@ defmodule RuleMatch.Ruleset do
   @doc "Human-readable form of an error returned by `load/1` or `from_json/1`."
   @spec format_error(term()) :: String.t()
   def format_error({:invalid_ruleset, message}), do: message
+  def format_error({:invalid_config, message}), do: message
   def format_error({:invalid_json, reason}), do: "invalid JSON: #{inspect(reason)}"
+  def format_error(:not_found), do: "ruleset not found"
 
   def format_error({:unsupported_format, format}),
     do: "unsupported ruleset format #{inspect(format)}"
