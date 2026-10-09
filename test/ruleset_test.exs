@@ -1,7 +1,7 @@
 defmodule RuleMatch.RulesetTest do
   use ExUnit.Case, async: true
 
-  alias RuleMatch.{Codec, Roster, Ruleset}
+  alias RuleMatch.{Codec, Reading, Roster, Rule, Ruleset}
 
   @every_op [
     {:eq, :organization, "acme"},
@@ -159,5 +159,54 @@ defmodule RuleMatch.RulesetTest do
     assert message =~ "ISO 8601"
 
     assert {:error, :enoent} = Ruleset.load("/nonexistent/ruleset.json")
+  end
+
+  test "saving a file does not seal, and a forged fingerprint stays stale" do
+    ruleset =
+      Ruleset.new(
+        normalize: %{downcase: ["payer"], dates: []},
+        rules: [
+          Rule.new(
+            id: "acme",
+            priority: 10,
+            reading: "Payer is acme.",
+            conditions: [{:eq, "payer", "acme"}],
+            outcome: %{network_status: "in_network"}
+          )
+        ]
+      )
+
+    assert Reading.status(ruleset, hd(ruleset.rules)) == :unsealed
+
+    path =
+      Path.join(System.tmp_dir!(), "rule-match-reading-#{System.unique_integer([:positive])}.json")
+
+    on_exit(fn -> File.rm(path) end)
+
+    assert Ruleset.save(ruleset, path) == :ok
+    assert {:ok, saved} = File.read!(path) |> Ruleset.from_json()
+    assert hd(saved.rules).reading == "Payer is acme."
+    assert hd(saved.rules).reading_fingerprint == nil
+    assert Reading.status(saved, hd(saved.rules)) == :unsealed
+
+    sealed = Ruleset.seal_readings(saved)
+    assert Ruleset.save(sealed, path) == :ok
+    assert {:ok, fresh} = File.read!(path) |> Ruleset.from_json()
+    assert Reading.status(fresh, hd(fresh.rules)) == :fresh
+
+    {:ok, map} = JSON.decode(File.read!(path))
+
+    forged =
+      put_in(map, ["rules", Access.at(0), "reading_fingerprint"], "sha256:forged")
+
+    File.write!(path, JSON.encode!(forged))
+    assert {:ok, stale} = File.read!(path) |> Ruleset.from_json()
+    assert hd(stale.rules).reading_fingerprint == "sha256:forged"
+    assert Reading.status(stale, hd(stale.rules)) == :stale
+
+    edited = put_in(map, ["rules", Access.at(0), "conditions", Access.at(0), "value"], "globex")
+    File.write!(path, JSON.encode!(edited))
+    assert {:ok, edited_ruleset} = File.read!(path) |> Ruleset.from_json()
+    assert Reading.status(edited_ruleset, hd(edited_ruleset.rules)) == :stale
   end
 end
