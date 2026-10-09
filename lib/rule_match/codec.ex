@@ -65,18 +65,37 @@ defmodule RuleMatch.Codec do
       "outcome" => to_json_value(rule.outcome)
     }
     |> put_unless("description", rule.description, nil)
+    |> put_reading(rule)
     |> put_unless("tags", Enum.map(rule.tags, &to_string/1), [])
     |> put_unless("meta", to_json_value(meta), %{})
   end
+
+  defp put_reading(map, rule) do
+    reading = present_reading(rule.reading)
+
+    map
+    |> put_unless("reading", reading, nil)
+    |> put_unless("reading_fingerprint", if(reading, do: rule.reading_fingerprint), nil)
+  end
+
+  defp present_reading(value) when is_binary(value) do
+    if String.trim(value) == "", do: nil, else: value
+  end
+
+  defp present_reading(_), do: nil
 
   @doc "A rule from its map form. Raises `ArgumentError` on a malformed rule."
   @spec rule_from_map(map()) :: Rule.t()
   def rule_from_map(%{} = map) do
     id = Map.get(map, "id")
 
+    reading = take_reading(Map.get(map, "reading"))
+
     Rule.new(
       id: id,
       description: Map.get(map, "description"),
+      reading: reading,
+      reading_fingerprint: if(reading, do: take_fingerprint(Map.get(map, "reading_fingerprint"))),
       priority: integer!(Map.get(map, "priority", 0), "priority of rule #{inspect(id)}"),
       tags: Map.get(map, "tags", []),
       conditions:
@@ -88,6 +107,19 @@ defmodule RuleMatch.Codec do
 
   def rule_from_map(other),
     do: raise(ArgumentError, "rule must be an object, got: #{inspect(other)}")
+
+  defp take_reading(nil), do: nil
+  defp take_reading(value) when is_binary(value), do: present_reading(value)
+
+  defp take_reading(other),
+    do: raise(ArgumentError, "reading must be a string, got: #{inspect(other)}")
+
+  defp take_fingerprint(nil), do: nil
+  defp take_fingerprint(""), do: nil
+  defp take_fingerprint(value) when is_binary(value), do: value
+
+  defp take_fingerprint(other),
+    do: raise(ArgumentError, "reading_fingerprint must be a string, got: #{inspect(other)}")
 
   ## Conditions
 
@@ -344,7 +376,7 @@ defmodule RuleMatch.Codec do
   def pretty(term), do: IO.iodata_to_binary([pretty(term, 0), ?\n])
 
   @key_order ~w(
-    format id name version description normalize downcase dates
+    format id name version description reading reading_fingerprint normalize downcase dates
     priority tags op field value values pattern from to args roster
     flags category category_field member_field as_of_field condition conditions outcome
     member categories effective_on terminates_on meta rules rosters

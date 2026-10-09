@@ -48,6 +48,34 @@ defmodule RuleMatch.EngineTest do
     assert hd(rules).outcome == %{ok: true}
     assert List.last(rules).meta.source == "manual"
     assert RuleMatch.compile(rules) == rules
+
+    [compiled] =
+      RuleMatch.compile([
+        %{id: "kept", reading: "Hello.", reading_fingerprint: "sha256:abc", conditions: []}
+      ])
+
+    assert compiled.reading == "Hello."
+    assert compiled.reading_fingerprint == "sha256:abc"
+  end
+
+  test "a reading and fingerprint do not change the decision" do
+    bare =
+      RuleMatch.rule("acme",
+        conditions: [{:eq, :payer, "acme"}],
+        outcome: %{network_status: "in_network"}
+      )
+
+    annotated = %{bare | reading: "Payer is acme.", reading_fingerprint: "sha256:forged"}
+    candidate = %{payer: "Acme"}
+
+    assert RuleMatch.decide([bare], candidate) == RuleMatch.decide([annotated], candidate)
+    assert RuleMatch.explain(bare, candidate) == RuleMatch.explain(annotated, candidate)
+
+    {:ok, [bare_match]} = RuleMatch.match([bare], candidate)
+    {:ok, [annotated_match]} = RuleMatch.match([annotated], candidate)
+
+    assert Map.take(bare_match, [:outcome, :priority, :specificity, :score, :explanation]) ==
+             Map.take(annotated_match, [:outcome, :priority, :specificity, :score, :explanation])
   end
 
   test "invalid rule identifiers are rejected" do

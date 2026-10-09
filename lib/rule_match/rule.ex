@@ -10,6 +10,8 @@ defmodule RuleMatch.Rule do
   defstruct [
     :id,
     :description,
+    :reading,
+    :reading_fingerprint,
     conditions: [],
     outcome: %{},
     priority: 0,
@@ -20,6 +22,8 @@ defmodule RuleMatch.Rule do
   @type t :: %__MODULE__{
           id: String.t(),
           description: String.t() | nil,
+          reading: String.t() | nil,
+          reading_fingerprint: String.t() | nil,
           conditions: [RuleMatch.Condition.t()],
           outcome: map(),
           priority: integer(),
@@ -41,6 +45,8 @@ defmodule RuleMatch.Rule do
     %__MODULE__{
       id: fetch_id!(attrs),
       description: Map.get(attrs, :description),
+      reading: Map.get(attrs, :reading),
+      reading_fingerprint: Map.get(attrs, :reading_fingerprint),
       conditions: conditions,
       outcome: Map.get(attrs, :outcome) || Map.get(attrs, :result) || %{},
       priority: Map.get(attrs, :priority, 0),

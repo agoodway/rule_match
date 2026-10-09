@@ -25,6 +25,54 @@ defmodule RuleMatch.CodecTest do
     assert Codec.rule_to_map(decoded) == encoded
   end
 
+  test "reading and fingerprint round-trip and absent values are omitted" do
+    rule =
+      Rule.new(
+        id: "acme",
+        reading: " Payer is acme. ",
+        reading_fingerprint: "sha256:abc",
+        conditions: []
+      )
+
+    encoded = Codec.rule_to_map(rule)
+    assert encoded["reading"] == " Payer is acme. "
+    assert encoded["reading_fingerprint"] == "sha256:abc"
+
+    decoded = Codec.rule_from_map(encoded)
+    assert decoded.reading == " Payer is acme. "
+    assert decoded.reading_fingerprint == "sha256:abc"
+    assert Codec.rule_to_map(decoded) == encoded
+
+    bare = Codec.rule_to_map(Rule.new(id: "bare", conditions: []))
+    refute Map.has_key?(bare, "reading")
+    refute Map.has_key?(bare, "reading_fingerprint")
+  end
+
+  test "blank readings and orphan fingerprints are dropped on decode" do
+    assert %{reading: nil, reading_fingerprint: nil} =
+             Codec.rule_from_map(%{
+               "id" => "blank",
+               "reading" => "  ",
+               "reading_fingerprint" => "sha256:abc"
+             })
+
+    assert %{reading: "Hi.", reading_fingerprint: nil} =
+             Codec.rule_from_map(%{"id" => "open", "reading" => "Hi.", "reading_fingerprint" => ""})
+
+    assert %{reading: nil, reading_fingerprint: nil} =
+             Codec.rule_from_map(%{"id" => "orphan", "reading_fingerprint" => "sha256:abc"})
+  end
+
+  test "non-string readings and fingerprints are rejected" do
+    assert_raise ArgumentError, ~r/reading must be a string/, fn ->
+      Codec.rule_from_map(%{"id" => "bad", "reading" => 1})
+    end
+
+    assert_raise ArgumentError, ~r/reading_fingerprint must be a string/, fn ->
+      Codec.rule_from_map(%{"id" => "bad", "reading" => "Hi.", "reading_fingerprint" => 1})
+    end
+  end
+
   test "minimal rule defaults and omitted optional properties" do
     rule = Codec.rule_from_map(%{"id" => "minimal"})
     assert rule.conditions == []
