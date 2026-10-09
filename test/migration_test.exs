@@ -153,7 +153,7 @@ defmodule RuleMatch.MigrationTest do
 
     Module.create(mod, ast, Macro.Env.location(__ENV__))
 
-    Ecto.Migrator.up(UnboxedRepo, System.unique_integer([:positive]), mod,
+    Ecto.Migrator.up(UnboxedRepo, System.unique_integer([:positive, :monotonic]), mod,
       prefix: prefix,
       log: false
     )
