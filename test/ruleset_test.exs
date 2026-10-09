@@ -209,4 +209,37 @@ defmodule RuleMatch.RulesetTest do
     assert {:ok, edited_ruleset} = File.read!(path) |> Ruleset.from_json()
     assert Reading.status(edited_ruleset, hd(edited_ruleset.rules)) == :stale
   end
+
+  test "an empty roster survives save and load and stays distinct from a missing roster" do
+    rule =
+      Rule.new(
+        id: "member",
+        reading: "The panel roster applies.",
+        conditions: [{:roster, "panel", []}]
+      )
+
+    empty =
+      Ruleset.new(rosters: %{"panel" => %{}}, rules: [rule])
+      |> Ruleset.seal_readings()
+
+    missing = %{empty | rosters: %{}}
+
+    assert Reading.fingerprint(empty, hd(empty.rules)) !=
+             Reading.fingerprint(missing, hd(empty.rules))
+
+    assert Codec.rosters_from_map(%{"panel" => []}) == %{"panel" => %{}}
+
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "rule-match-empty-roster-#{System.unique_integer([:positive])}.json"
+      )
+
+    on_exit(fn -> File.rm(path) end)
+
+    assert Ruleset.save(empty, path) == :ok
+    assert {:ok, reloaded} = File.read!(path) |> Ruleset.from_json()
+    assert Map.has_key?(reloaded.rosters, "panel")
+    assert Reading.status(reloaded, hd(reloaded.rules)) == :fresh
+  end
 end

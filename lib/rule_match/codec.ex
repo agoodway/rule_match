@@ -303,6 +303,9 @@ defmodule RuleMatch.Codec do
   @spec rosters_from_map(map()) :: Roster.t()
   def rosters_from_map(%{} = map) do
     Enum.reduce(map, Roster.new(), fn {name, entries}, book ->
+      name = to_string(name)
+      book = Map.put_new(book, name, %{})
+
       entries
       |> list!("roster #{inspect(name)}")
       |> Enum.reduce(book, &put_roster_entry(&2, name, &1))
