@@ -90,6 +90,24 @@ defmodule RuleMatch.Ruleset do
   end
 
   @doc """
+  Accept every present reading against the ruleset as it stands.
+
+  Returns a new ruleset. Does not write a file or a database row.
+  """
+  @spec seal_readings(t()) :: t()
+  def seal_readings(%__MODULE__{} = ruleset) do
+    %{ruleset | rules: Enum.map(ruleset.rules, &seal_rule(ruleset, &1))}
+  end
+
+  defp seal_rule(ruleset, rule) do
+    if RuleMatch.Reading.present?(rule.reading) do
+      %{rule | reading_fingerprint: RuleMatch.Reading.fingerprint(ruleset, rule)}
+    else
+      %{rule | reading: nil, reading_fingerprint: nil}
+    end
+  end
+
+  @doc """
   Load a ruleset through the configured adapter, defaulting to a JSON file.
 
   Returns `{:ok, ruleset}` or `{:error, reason}` for expected failures.
