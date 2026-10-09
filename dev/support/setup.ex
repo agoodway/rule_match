@@ -12,10 +12,25 @@ defmodule RuleMatch.Dev.Setup do
     end
 
     case Ecto.Migrator.with_repo(UnboxedRepo, fn repo ->
-           Ecto.Migrator.up(repo, 1, Migration, log: false)
+           # Timestamp 2 re-enters Dev.Migration after timestamp 1 is already
+           # recorded, so later evolver versions still apply.
+           first = Ecto.Migrator.up(repo, 1, Migration, log: false)
+           second = Ecto.Migrator.up(repo, 2, Migration, log: false)
+
+           if first in [:ok, :already_up] and second in [:ok, :already_up] do
+             :ok
+           else
+             {:error, {first, second}}
+           end
          end) do
-      {:ok, result, _apps} when result in [:ok, :already_up] -> :ok
-      {:error, reason} -> Mix.raise("Could not set up the RuleMatch database: #{inspect(reason)}")
+      {:ok, :ok, _apps} ->
+        :ok
+
+      {:ok, other, _apps} ->
+        Mix.raise("Could not set up the RuleMatch database: #{inspect(other)}")
+
+      {:error, reason} ->
+        Mix.raise("Could not set up the RuleMatch database: #{inspect(reason)}")
     end
   rescue
     error in [DBConnection.ConnectionError, Postgrex.Error] ->

@@ -21,5 +21,5 @@ defmodule RuleMatch.Migration do
     otp_app: :rule_match,
     default_prefix: "rule_match",
     tracking_object: {:table, "rulesets"},
-    versions: [RuleMatch.Migrations.V01]
+    versions: [RuleMatch.Migrations.V01, RuleMatch.Migrations.V02]
 end
