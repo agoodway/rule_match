@@ -32,8 +32,11 @@ defmodule RuleMatch.Store do
   """
 
   import Ecto.Query
+  alias RuleMatch.Codec
   alias RuleMatch.Config
+  alias RuleMatch.Reading
   alias RuleMatch.Schemas.{Rule, Ruleset}
+  alias RuleMatch.StoredData
 
   @doc "List rulesets in key order."
   def list_rulesets(opts \\ []) do
@@ -122,7 +125,7 @@ defmodule RuleMatch.Store do
           )
 
         record = %Rule{ruleset_id: parent.id, position: (max_position || -1) + 1}
-        repo.insert(Rule.changeset(record, attrs), prefix: prefix)
+        repo.insert(seal_changeset(record, attrs, parent), prefix: prefix)
       end)
     end
   end
@@ -134,7 +137,7 @@ defmodule RuleMatch.Store do
          :ok <- identifier(rule_id, :rule_id) do
       with_locked_parent(repo, prefix, key, fn parent ->
         with {:ok, rule} <- find_rule(repo, prefix, parent.id, rule_id) do
-          repo.update(Rule.changeset(rule, attrs), prefix: prefix)
+          repo.update(seal_changeset(rule, attrs, parent), prefix: prefix)
         end
       end)
     end
@@ -151,6 +154,44 @@ defmodule RuleMatch.Store do
         end
       end)
     end
+  end
+
+  defp seal_changeset(record, attrs, parent) do
+    changeset = Rule.changeset(record, attrs)
+
+    with {:ok, normalized} <- StoredData.normalize_attrs(attrs),
+         true <- changeset.valid? and Map.has_key?(normalized, "reading"),
+         reading when is_binary(reading) <- Ecto.Changeset.get_field(changeset, :reading) do
+      Ecto.Changeset.put_change(
+        changeset,
+        :reading_fingerprint,
+        Reading.fingerprint(reading_ruleset(parent), runtime_rule(changeset))
+      )
+    else
+      _ -> changeset
+    end
+  end
+
+  defp reading_ruleset(parent) do
+    normalize = parent.normalize || %{}
+
+    %RuleMatch.Ruleset{
+      normalize: %{
+        downcase: Map.get(normalize, "downcase", []),
+        dates: Map.get(normalize, "dates", [])
+      },
+      rosters: Codec.rosters_from_map(parent.rosters || %{})
+    }
+  end
+
+  defp runtime_rule(changeset) do
+    Codec.rule_from_map(%{
+      "id" => Ecto.Changeset.get_field(changeset, :rule_id),
+      "priority" => Ecto.Changeset.get_field(changeset, :priority),
+      "conditions" => Ecto.Changeset.get_field(changeset, :conditions) || [],
+      "outcome" => Ecto.Changeset.get_field(changeset, :outcome) || %{},
+      "reading" => Ecto.Changeset.get_field(changeset, :reading)
+    })
   end
 
   defp ordered_rules(parent_id) do

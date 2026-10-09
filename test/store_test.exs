@@ -2,6 +2,7 @@ defmodule RuleMatch.StoreTest do
   use RuleMatch.DataCase
 
   alias Ecto.Changeset
+  alias RuleMatch.{Reading, Ruleset}
   alias RuleMatch.Store
 
   setup %{repo: repo, prefix: prefix}, do: %{opts: [repo: repo, prefix: prefix]}
@@ -287,6 +288,100 @@ defmodule RuleMatch.StoreTest do
     end
   end
 
+  test "a reading seals the post-update body and a body-only edit stays stale", %{opts: opts} do
+    assert {:ok, _} =
+             Store.create_ruleset(
+               %{
+                 key: "readings",
+                 normalize: %{"downcase" => ["payer"], "dates" => []},
+                 rosters: %{
+                   "panel" => [
+                     %{
+                       "member" => "ann",
+                       "categories" => ["read"],
+                       "effective_on" => "2024-01-01"
+                     }
+                   ]
+                 }
+               },
+               opts
+             )
+
+    reading = "Payer acme is in network."
+
+    assert {:ok, created} =
+             Store.create_rule(
+               "readings",
+               %{
+                 rule_id: "acme",
+                 priority: 10,
+                 reading: reading,
+                 conditions: [%{"op" => "eq", "field" => "payer", "value" => "acme"}],
+                 outcome: %{"network_status" => "in_network"}
+               },
+               opts
+             )
+
+    assert created.reading == reading
+    {fresh_ruleset, fresh_rule} = status_of(created, opts)
+    assert Reading.status(fresh_ruleset, fresh_rule) == :fresh
+    assert fresh_rule.reading_fingerprint == created.reading_fingerprint
+
+    assert {:ok, edited} =
+             Store.update_rule(
+               "readings",
+               "acme",
+               %{
+                 priority: 12,
+                 conditions: [%{"op" => "eq", "field" => "payer", "value" => "globex"}],
+                 outcome: %{"network_status" => "out"}
+               },
+               opts
+             )
+
+    assert edited.reading == reading
+    assert edited.reading_fingerprint == created.reading_fingerprint
+    {stale_ruleset, stale_rule} = status_of(edited, opts)
+    assert Reading.status(stale_ruleset, stale_rule) == :stale
+    assert stale_rule.priority == 12
+    assert stale_rule.conditions == [{:eq, "payer", "globex"}]
+
+    assert {:ok, resealed} = Store.update_rule("readings", "acme", %{reading: reading}, opts)
+    assert resealed.reading == reading
+    assert resealed.reading_fingerprint != created.reading_fingerprint
+    {again_ruleset, again_rule} = status_of(resealed, opts)
+    assert Reading.status(again_ruleset, again_rule) == :fresh
+    assert Reading.fingerprint(again_ruleset, again_rule) == resealed.reading_fingerprint
+    assert again_rule.priority == 12
+
+    assert {:error, forged} =
+             Store.update_rule(
+               "readings",
+               "acme",
+               %{priority: 1, reading_fingerprint: "sha256:forged"},
+               opts
+             )
+
+    assert {:reading_fingerprint, {"is set by the library", _}} =
+             List.keyfind!(forged.errors, :reading_fingerprint, 0)
+
+    assert {:ok, unchanged} = Store.fetch_rule("readings", "acme", opts)
+    assert unchanged.priority == 12
+    assert unchanged.reading_fingerprint == resealed.reading_fingerprint
+
+    assert {:error, bad_type} =
+             Store.create_rule("readings", %{rule_id: "bad", reading: 1}, opts)
+
+    assert {:reading, {"must be a string", _}} = List.keyfind!(bad_type.errors, :reading, 0)
+    assert {:error, :not_found} = Store.fetch_rule("readings", "bad", opts)
+
+    assert {:ok, cleared} = Store.update_rule("readings", "acme", %{reading: " "}, opts)
+    assert cleared.reading == nil
+    assert cleared.reading_fingerprint == nil
+    {absent_ruleset, absent_rule} = status_of(cleared, opts)
+    assert Reading.status(absent_ruleset, absent_rule) == :absent
+  end
+
   test "parent mutations propagate unexpected database exceptions", %{opts: opts} do
     missing_prefix = "missing_store_#{System.unique_integer([:positive, :monotonic])}"
     invalid_opts = Keyword.put(opts, :prefix, missing_prefix)
@@ -315,4 +410,28 @@ defmodule RuleMatch.StoreTest do
 
   def capture_query(_event, _measurements, metadata, pid),
     do: send(pid, {:store_query, metadata.query})
+
+  defp status_of(record, opts) do
+    {:ok, parent} = Store.fetch_ruleset("readings", opts)
+
+    ruleset = %Ruleset{
+      normalize: %{
+        downcase: parent.normalize["downcase"],
+        dates: parent.normalize["dates"]
+      },
+      rosters: RuleMatch.Codec.rosters_from_map(parent.rosters)
+    }
+
+    rule =
+      RuleMatch.Codec.rule_from_map(%{
+        "id" => record.rule_id,
+        "priority" => record.priority,
+        "conditions" => record.conditions,
+        "outcome" => record.outcome,
+        "reading" => record.reading,
+        "reading_fingerprint" => record.reading_fingerprint
+      })
+
+    {ruleset, rule}
+  end
 end

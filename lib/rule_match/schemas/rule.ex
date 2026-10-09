@@ -2,8 +2,10 @@ defmodule RuleMatch.Schemas.Rule do
   @moduledoc """
   An Ecto record for a stored rule, distinct from a runtime `RuleMatch.Rule`.
 
-  Writable attributes are `rule_id`, `description`, `priority`, `position`,
-  `conditions`, `outcome`, `tags`, and `meta`. Conditions use string-keyed
+  Writable attributes are `rule_id`, `description`, `reading`, `priority`,
+  `position`, `conditions`, `outcome`, `tags`, and `meta`.
+  `reading_fingerprint` is set by the library and rejected in attributes.
+  Conditions use string-keyed
   codec objects; outcome and metadata are JSON objects, and tags are strings.
   `rule_id` is unique within the parent. Priorities fit a signed 32-bit integer;
   positions range from zero to 2_147_483_647 and may tie or have gaps.
@@ -16,13 +18,25 @@ defmodule RuleMatch.Schemas.Rule do
   alias RuleMatch.StoredData
   alias RuleMatch.Types.StoredJSON
 
-  @fields [:rule_id, :description, :priority, :position, :conditions, :outcome, :tags, :meta]
+  @fields [
+    :rule_id,
+    :description,
+    :reading,
+    :priority,
+    :position,
+    :conditions,
+    :outcome,
+    :tags,
+    :meta
+  ]
   @json_fields [:conditions, :outcome, :tags, :meta]
 
   schema "rules" do
     belongs_to(:ruleset, RuleMatch.Schemas.Ruleset)
     field(:rule_id, :string)
     field(:description, :string)
+    field(:reading, :string)
+    field(:reading_fingerprint, :string)
     field(:priority, :integer, default: 0)
     field(:position, :integer)
     field(:conditions, {:array, StoredJSON}, default: [])
@@ -45,6 +59,7 @@ defmodule RuleMatch.Schemas.Rule do
         |> validate_storage_integer(:priority, -2_147_483_648, 2_147_483_647)
         |> validate_storage_integer(:position, 0, 2_147_483_647)
         |> reject_parent(attrs)
+        |> cast_reading(attrs)
         |> validate_definition(attrs)
         |> unique_constraint(:rule_id, name: :rules_ruleset_id_rule_id_index)
         |> foreign_key_constraint(:ruleset_id, name: :rules_ruleset_id_fkey)
@@ -85,6 +100,30 @@ defmodule RuleMatch.Schemas.Rule do
         else: changeset
     end)
   end
+
+  defp cast_reading(changeset, attrs) do
+    cond do
+      Map.has_key?(attrs, "reading_fingerprint") ->
+        add_error(changeset, :reading_fingerprint, "is set by the library")
+
+      not Map.has_key?(attrs, "reading") ->
+        changeset
+
+      is_nil(attrs["reading"]) or blank_reading?(attrs["reading"]) ->
+        changeset
+        |> put_change(:reading, nil)
+        |> put_change(:reading_fingerprint, nil)
+
+      is_binary(attrs["reading"]) ->
+        put_change(changeset, :reading, attrs["reading"])
+
+      true ->
+        add_error(changeset, :reading, "must be a string")
+    end
+  end
+
+  defp blank_reading?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank_reading?(_), do: false
 
   defp validate_definition(changeset, attrs) do
     candidate =

@@ -65,6 +65,30 @@ defmodule RuleMatch.SchemaTest do
     assert Changeset.get_field(changeset, :tags) == tags
   end
 
+  test "reading is optional text and the fingerprint is not writable" do
+    assert Rule.changeset(record(), %{rule_id: "x", reading: "Hello."}).valid?
+
+    assert Changeset.get_field(Rule.changeset(record(), %{rule_id: "x", reading: " "}), :reading) ==
+             nil
+
+    blank = Rule.changeset(record(), %{rule_id: "x", reading: " "})
+    assert Changeset.get_field(blank, :reading_fingerprint) == nil
+
+    bad_type = Rule.changeset(record(), %{rule_id: "x", reading: 1})
+
+    assert {:reading, {"must be a string", _}} =
+             hd(Enum.filter(bad_type.errors, &(elem(&1, 0) == :reading)))
+
+    refute bad_type.valid?
+
+    forged = Rule.changeset(record(), %{rule_id: "x", reading_fingerprint: "sha256:nope"})
+
+    assert {:reading_fingerprint, {"is set by the library", _}} =
+             hd(Enum.filter(forged.errors, &(elem(&1, 0) == :reading_fingerprint)))
+
+    refute forged.valid?
+  end
+
   test "parents and associations cannot be assigned through user attributes" do
     assert has_error?(Rule.changeset(record(), %{rule_id: "x", ruleset_id: 99}), :ruleset_id)
     assert has_error?(Rule.changeset(record(), %{rule_id: "x", ruleset: %{id: 99}}), :ruleset)
