@@ -85,6 +85,37 @@ Decoding never creates atoms from ops, field names, or values. Outcome keys do b
 
 `match/3`, `best/3`, `select/3`, and `decide/3` take either a ruleset or a plain list of `%RuleMatch.Rule{}`. With a ruleset, its rosters join the context and its normalization runs first. `match/3` returns `{:ok, matches}` (possibly empty); `best/3` returns `{:ok, %RuleMatch.Match{}}` or `:nomatch`. `decide/3` returns `{:ok, outcome}` or `:nomatch`; the winning outcome includes `:rule_id`, `:explanation`, `:priority`, `:specificity`, and `:alternatives` (every other rule that matched). `select/3` returns a list of candidate/match maps; `explain/3` returns a list of condition explanations.
 
+## Readings
+
+Each rule may carry a `reading`, a plain-English sentence for a person.
+`description` stays a short label written by the author. Matching ignores
+the reading. This library does not call a model and does not write the sentence.
+
+A generating model puts the sentence in `reading` and omits
+`reading_fingerprint`. The sentence describes that rule's conditions, outcome,
+and priority. It leaves out other rules, tie-breaks, and position. Those are
+not part of the freshness check. A predicate's code and any field units are
+not part of it either. The predicate name and `args` are.
+
+The host then accepts the prose:
+
+    sealed = RuleMatch.Ruleset.seal_readings(ruleset)
+    RuleMatch.Ruleset.save(sealed, "rules.json")
+
+`RuleMatch.Reading.status/2` returns `:absent`, `:unsealed`, `:fresh`, or
+`:stale`. `:unsealed` means a sentence is stored and no fingerprint has been
+accepted. `:stale` means the conditions, outcome, priority, normalize spec, or
+a roster named by that rule changed after the sentence was accepted. Load and
+`Ruleset.save/2` do not seal.
+
+`Store.create_rule/3` and `Store.update_rule/4` accept `reading`. Sending it
+seals that sentence against the rule as stored after the write. Omitting it
+leaves the stored sentence and fingerprint unchanged, so a body-only edit
+becomes stale. `nil` or a blank string clears both. `reading_fingerprint` is
+rejected. `Store.seal_readings/2` accepts every stored sentence against the
+parent as it stands, which is how a roster or normalize edit is acknowledged
+without retyping the prose.
+
 ## PostgreSQL rulesets
 
 Add `{:postgrex, "~> 0.22"}` to your application's dependencies and configure
@@ -190,8 +221,9 @@ empty and whitespace-only strings. Database rules use `rule_id` for the runtime
 rule's `id`.
 
 Ruleset attributes are `key`, `name`, `version`, `description`, `normalize`,
-`rosters`, and `meta`. Rule attributes are `rule_id`, `description`, `priority`,
-`position`, `conditions`, `outcome`, `tags`, and `meta`. Primary keys and
+`rosters`, and `meta`. Rule attributes are `rule_id`, `description`, `reading`,
+`priority`, `position`, `conditions`, `outcome`, `tags`, and `meta`.
+`reading_fingerprint` is set by the library. Primary keys and
 timestamps are server-managed. Creating a ruleset creates an empty parent;
 updates change only its own attributes, including its key when supplied.
 Nested `rules` input is rejected with a changeset error. Change rules through

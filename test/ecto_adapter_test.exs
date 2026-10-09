@@ -1,7 +1,7 @@
 defmodule RuleMatch.EctoAdapterTest do
   use RuleMatch.DataCase
 
-  alias RuleMatch.{Roster, Ruleset, Store}
+  alias RuleMatch.{Reading, Roster, Ruleset, Store}
 
   setup %{repo: repo, prefix: prefix} do
     opts = [repo: repo, prefix: prefix]
@@ -307,6 +307,33 @@ defmodule RuleMatch.EctoAdapterTest do
 
       assert is_binary(message)
     end
+  end
+
+  test "the loader returns the stored reading and fingerprint", %{
+    opts: opts,
+    ecto_opts: ecto_opts
+  } do
+    assert {:ok, _} = Store.create_ruleset(%{key: "loaded-reading"}, opts)
+
+    assert {:ok, _} =
+             Store.create_rule(
+               "loaded-reading",
+               %{
+                 rule_id: "acme",
+                 priority: 10,
+                 reading: "Payer is acme.",
+                 conditions: [%{"op" => "eq", "field" => "payer", "value" => "acme"}],
+                 outcome: %{"network_status" => "in_network"}
+               },
+               opts
+             )
+
+    assert {:ok, ruleset} = Ruleset.load("loaded-reading", ecto_opts)
+
+    [rule] = ruleset.rules
+    assert rule.reading == "Payer is acme."
+    assert Reading.status(ruleset, rule) == :fresh
+    assert rule.reading_fingerprint == Reading.fingerprint(ruleset, rule)
   end
 
   test "unmigrated prefixes propagate database errors", %{ecto_opts: ecto_opts} do

@@ -45,6 +45,8 @@ defmodule RuleMatch.Adapters.Ecto do
     %{
       "id" => stored.rule_id,
       "description" => stored.description,
+      "reading" => stored.reading,
+      "reading_fingerprint" => stored.reading_fingerprint,
       "priority" => stored.priority,
       "conditions" => stored.conditions,
       "outcome" => stored.outcome,

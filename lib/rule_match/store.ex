@@ -143,6 +143,31 @@ defmodule RuleMatch.Store do
     end
   end
 
+  @doc """
+  Accept every stored reading against the ruleset as currently stored.
+
+  Does not change reading text. Returns the rules in position then primary-key order.
+  """
+  @spec seal_readings(String.t(), keyword()) :: {:ok, [Rule.t()]} | {:error, term()}
+  def seal_readings(key, opts \\ []) do
+    with {:ok, {repo, prefix}} <- Config.store(opts),
+         :ok <- identifier(key, :key) do
+      with_locked_parent(repo, prefix, key, fn parent ->
+        context = reading_ruleset(parent)
+
+        parent.id
+        |> ordered_rules()
+        |> repo.all(prefix: prefix)
+        |> Enum.reduce_while({:ok, []}, fn record, {:ok, sealed} ->
+          case seal_record(repo, prefix, context, record) do
+            {:ok, updated} -> {:cont, {:ok, sealed ++ [updated]}}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+        end)
+      end)
+    end
+  end
+
   @doc "Delete a rule by its parent's key and its scoped identifier."
   def delete_rule(key, rule_id, opts \\ []) do
     with {:ok, {repo, prefix}} <- Config.store(opts),
@@ -191,6 +216,40 @@ defmodule RuleMatch.Store do
       "conditions" => Ecto.Changeset.get_field(changeset, :conditions) || [],
       "outcome" => Ecto.Changeset.get_field(changeset, :outcome) || %{},
       "reading" => Ecto.Changeset.get_field(changeset, :reading)
+    })
+  end
+
+  defp seal_record(repo, prefix, context, record) do
+    [sealed] =
+      context
+      |> Map.put(:rules, [runtime_rule_record(record)])
+      |> RuleMatch.Ruleset.seal_readings()
+      |> Map.fetch!(:rules)
+
+    if sealed.reading == record.reading and
+         sealed.reading_fingerprint == record.reading_fingerprint do
+      {:ok, record}
+    else
+      record
+      |> Ecto.Changeset.change(
+        reading: sealed.reading,
+        reading_fingerprint: sealed.reading_fingerprint
+      )
+      |> repo.update(prefix: prefix)
+    end
+  end
+
+  defp runtime_rule_record(record) do
+    Codec.rule_from_map(%{
+      "id" => record.rule_id,
+      "priority" => record.priority,
+      "conditions" => record.conditions,
+      "outcome" => record.outcome,
+      "tags" => record.tags,
+      "meta" => record.meta,
+      "description" => record.description,
+      "reading" => record.reading,
+      "reading_fingerprint" => record.reading_fingerprint
     })
   end
 

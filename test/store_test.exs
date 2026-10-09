@@ -382,6 +382,84 @@ defmodule RuleMatch.StoreTest do
     assert Reading.status(absent_ruleset, absent_rule) == :absent
   end
 
+  test "sealing after a roster edit refreshes only the rule that names it", %{opts: opts} do
+    assert {:ok, _} =
+             Store.create_ruleset(
+               %{
+                 key: "seal-roster",
+                 rosters: %{
+                   "panel" => [
+                     %{
+                       "member" => "ann",
+                       "categories" => ["read"],
+                       "effective_on" => "2024-01-01"
+                     }
+                   ]
+                 }
+               },
+               opts
+             )
+
+    assert {:ok, member} =
+             Store.create_rule(
+               "seal-roster",
+               %{
+                 rule_id: "member",
+                 reading: "Ann is on the panel.",
+                 conditions: [%{"op" => "roster", "roster" => "panel"}]
+               },
+               opts
+             )
+
+    assert {:ok, other} =
+             Store.create_rule(
+               "seal-roster",
+               %{
+                 rule_id: "other",
+                 reading: "Priority is zero.",
+                 conditions: [%{"op" => "eq", "field" => "payer", "value" => "acme"}]
+               },
+               opts
+             )
+
+    assert {:ok, _} =
+             Store.update_ruleset(
+               "seal-roster",
+               %{
+                 rosters: %{
+                   "panel" => [
+                     %{
+                       "member" => "ann",
+                       "categories" => ["read"],
+                       "effective_on" => "2024-01-01"
+                     },
+                     %{
+                       "member" => "bea",
+                       "categories" => ["read"],
+                       "effective_on" => "2024-01-01"
+                     }
+                   ]
+                 }
+               },
+               opts
+             )
+
+    assert {:ok, stale_member} = Store.fetch_rule("seal-roster", "member", opts)
+    assert {:ok, still_other} = Store.fetch_rule("seal-roster", "other", opts)
+    assert stale_member.reading_fingerprint == member.reading_fingerprint
+    assert still_other.reading_fingerprint == other.reading_fingerprint
+
+    assert {:ok, [sealed_member, sealed_other]} = Store.seal_readings("seal-roster", opts)
+    assert sealed_member.rule_id == "member"
+    assert sealed_other.rule_id == "other"
+    assert sealed_member.reading == "Ann is on the panel."
+    assert sealed_member.reading_fingerprint != member.reading_fingerprint
+    assert sealed_other.reading_fingerprint == other.reading_fingerprint
+
+    assert Store.seal_readings("missing-readings", opts) == {:error, :not_found}
+    assert {:error, {:invalid_config, _}} = Store.seal_readings(" ", opts)
+  end
+
   test "parent mutations propagate unexpected database exceptions", %{opts: opts} do
     missing_prefix = "missing_store_#{System.unique_integer([:positive, :monotonic])}"
     invalid_opts = Keyword.put(opts, :prefix, missing_prefix)
