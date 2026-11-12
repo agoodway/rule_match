@@ -7,3 +7,6 @@ erl_crash.dump
 rule_match-*.tar
 .elixir_ls/
 /.worktrees/
+
+# Local task notes
+/.humanlayer/
