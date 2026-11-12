@@ -1,0 +1,225 @@
+{
+  "format": 1,
+  "name": "car_evaluation",
+  "version": "uci-1997",
+  "rules": [
+    {
+      "id": "unacc_low_safety",
+      "description": "Low safety is never acceptable",
+      "priority": 100,
+      "conditions": [{"op": "eq", "field": "safety", "value": "low"}],
+      "outcome": {"class": "unacc"}
+    },
+    {
+      "id": "unacc_two_persons",
+      "description": "A two-person car is never acceptable",
+      "priority": 90,
+      "conditions": [{"op": "eq", "field": "persons", "value": "2"}],
+      "outcome": {"class": "unacc"}
+    },
+    {
+      "id": "unacc_price",
+      "description": "Price is unacceptable when buying and maintenance are both very high or high",
+      "priority": 80,
+      "conditions": [
+        {
+          "op": "any",
+          "conditions": [
+            {
+              "op": "all",
+              "conditions": [
+                {"op": "eq", "field": "buying", "value": "vhigh"},
+                {"op": "in", "field": "maint", "values": ["vhigh", "high"]}
+              ]
+            },
+            {
+              "op": "all",
+              "conditions": [
+                {"op": "eq", "field": "buying", "value": "high"},
+                {"op": "eq", "field": "maint", "value": "vhigh"}
+              ]
+            }
+          ]
+        }
+      ],
+      "outcome": {"class": "unacc"}
+    },
+    {
+      "id": "unacc_cramped",
+      "description": "More than four persons in two doors with a small boot is unacceptable",
+      "priority": 70,
+      "conditions": [
+        {"op": "eq", "field": "persons", "value": "more"},
+        {"op": "eq", "field": "doors", "value": "2"},
+        {"op": "eq", "field": "lug_boot", "value": "small"}
+      ],
+      "outcome": {"class": "unacc"}
+    },
+    {
+      "id": "vgood",
+      "description": "Low price with roomy comfort and high safety",
+      "priority": 60,
+      "conditions": [
+        {
+          "op": "any",
+          "conditions": [
+            {
+              "op": "all",
+              "conditions": [
+                {"op": "eq", "field": "buying", "value": "med"},
+                {"op": "in", "field": "maint", "values": ["med", "low"]}
+              ]
+            },
+            {
+              "op": "all",
+              "conditions": [
+                {"op": "eq", "field": "buying", "value": "low"},
+                {"op": "in", "field": "maint", "values": ["high", "med", "low"]}
+              ]
+            }
+          ]
+        },
+        {
+          "op": "any",
+          "conditions": [
+            {"op": "eq", "field": "lug_boot", "value": "big"},
+            {
+              "op": "all",
+              "conditions": [
+                {"op": "eq", "field": "lug_boot", "value": "med"},
+                {
+                  "op": "any",
+                  "conditions": [
+                    {"op": "in", "field": "doors", "values": ["4", "5more"]},
+                    {
+                      "op": "all",
+                      "conditions": [
+                        {"op": "eq", "field": "persons", "value": "more"},
+                        {"op": "eq", "field": "doors", "value": "3"}
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {"op": "eq", "field": "safety", "value": "high"}
+      ],
+      "outcome": {"class": "vgood"}
+    },
+    {
+      "id": "good",
+      "description": "Lowest price with high safety or roomy comfort",
+      "priority": 50,
+      "conditions": [
+        {
+          "op": "any",
+          "conditions": [
+            {
+              "op": "all",
+              "conditions": [
+                {"op": "eq", "field": "buying", "value": "med"},
+                {"op": "eq", "field": "maint", "value": "low"}
+              ]
+            },
+            {
+              "op": "all",
+              "conditions": [
+                {"op": "eq", "field": "buying", "value": "low"},
+                {"op": "in", "field": "maint", "values": ["med", "low"]}
+              ]
+            }
+          ]
+        },
+        {
+          "op": "any",
+          "conditions": [
+            {"op": "eq", "field": "safety", "value": "high"},
+            {"op": "eq", "field": "lug_boot", "value": "big"},
+            {
+              "op": "all",
+              "conditions": [
+                {"op": "eq", "field": "lug_boot", "value": "med"},
+                {
+                  "op": "any",
+                  "conditions": [
+                    {"op": "in", "field": "doors", "values": ["4", "5more"]},
+                    {
+                      "op": "all",
+                      "conditions": [
+                        {"op": "eq", "field": "persons", "value": "more"},
+                        {"op": "eq", "field": "doors", "value": "3"}
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "outcome": {"class": "good"}
+    },
+    {
+      "id": "unacc_middling",
+      "description": "Middling price with tight comfort and medium safety is unacceptable",
+      "priority": 40,
+      "conditions": [
+        {
+          "op": "none",
+          "conditions": [
+            {
+              "op": "all",
+              "conditions": [
+                {"op": "eq", "field": "buying", "value": "med"},
+                {"op": "in", "field": "maint", "values": ["med", "low"]}
+              ]
+            },
+            {
+              "op": "all",
+              "conditions": [
+                {"op": "eq", "field": "buying", "value": "low"},
+                {"op": "in", "field": "maint", "values": ["high", "med", "low"]}
+              ]
+            }
+          ]
+        },
+        {
+          "op": "none",
+          "conditions": [
+            {"op": "eq", "field": "lug_boot", "value": "big"},
+            {
+              "op": "all",
+              "conditions": [
+                {"op": "eq", "field": "lug_boot", "value": "med"},
+                {
+                  "op": "any",
+                  "conditions": [
+                    {"op": "in", "field": "doors", "values": ["4", "5more"]},
+                    {
+                      "op": "all",
+                      "conditions": [
+                        {"op": "eq", "field": "persons", "value": "more"},
+                        {"op": "eq", "field": "doors", "value": "3"}
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {"op": "eq", "field": "safety", "value": "med"}
+      ],
+      "outcome": {"class": "unacc"}
+    },
+    {
+      "id": "acc",
+      "description": "Every car no higher rule decides",
+      "priority": 10,
+      "conditions": [],
+      "outcome": {"class": "acc"}
+    }
+  ]
+}
